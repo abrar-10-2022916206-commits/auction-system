@@ -29,7 +29,7 @@
     <div class="admin-toolbar">
         <div class="toolbar-left">
             <div class="search-wrapper">
-                <input type="text" id="search-bar" placeholder="Search by serial # (1-51)" autocomplete="off">
+                <input type="text" id="search-bar" placeholder="Search by serial # (1-62)" autocomplete="off">
             </div>
             <div class="filter-tabs">
                 <button class="filter-tab active" data-filter="all">All</button>
@@ -48,7 +48,7 @@
                     <span class="stat-val" id="stat-remaining">64</span>
                 </div>
             </div>
-            <button class="btn btn-reset" id="unsold-btn" onclick="requestRollNumber()">🎲 Unsold</button>
+            <button class="btn btn-reset" id="unsold-btn" onclick="markCurrentNumberUnsold()">⏭️ Skip (Unsold)</button>
             <button class="btn btn-reset" id="reset-btn" onclick="confirmReset()">🔄 Reset Market</button>
         </div>
     </div>
@@ -76,25 +76,18 @@
         // -------- TEAM CONFIG --------
         const BASE_PLAYER_PRICE = 20;
         const teamNames = [
-            "Neutron Stikers",
-            "Tokamak Titans",
-            "Deuterium  Dynamos",
-            "Plasma Blasters",
-            "Fusion United"
+            "Tiktok boyz",
+            "Disco boys",
+            "পারলে ঠেকাও",
+            "শূণ্য রান এক্সপ্রেস",
+            "আমরাই টপ আমরাই সব",
+            "সাইক্লোন"
         ];
 
         let playerOwners = {};
 
         const playerList = [
-            "Ashik Miah_10",
-            "Md. Meharub Hossain_12",
-            "Md. Ripon Hossen_NE-11",
-            "Sudipto Mondal Mahin_12",
-            "Dyhan Alam_NE12",
-            "Fahim Shahriar_11",
-            "Sifatuzzaman Sium_NE-12",
-            "Md Ashab Al Hasib Kabyo_12",
-            "MD Ilia's mahdi adan_12", "Nabil Ahmed_NE-12(104)", "Shihab_11", "Md Tarikul Islam_13", "Emtiaje_11", "Ayman alam_8th", "Enamul Hoque Jewel_11", "Sajir_12", "Tanzim Koushik_10", "Md Rofik Islam_NE-11", "Pranto_10", "MD Shurid_13", "Nahid_6th", "Khan Mahmud Sunny_13", "Saeid_11", "Mubassir Rahman_12", "Saad Chowdhury_12", "Rifat Tamim_12", "Fehazul Islam Sawmiq_11", "Sifat_11", "Rafat Rahman Aronno_11", "Apon_12", "Araf Ahamad_10", "Munna_11", "Md Tanzim Alahi_9th", "Shadab zafir shion_12", "Robiul_12", "Azmaen Galib_12", "Aiman noor_12", "Abu Sadat Al Sabit_13", "Rijon_12th", "Tasin Rahman_8", "Sajjad Hossain Hridoy_NE-13", "Jihad_9th", "Ashim mazumder santo_9th", "Ashraful Islam_10th", "Mehady Hasan_9", "Abrar Tamim_9", "Saadman Zaman Bevore_11th", "Fardeen_9", "Ariful Islam_7", "Farhan Arnab_7", "Ashik Reza_6","Shahriar Nasib_11","Maruf_8","Noman_8"
+            "Abdur Rahman Bhuiyan (Faysal)_11", "Abdullah Khubaib_10", "Abdullah Wasif_12", "Abu Sadat Ali Sabit_13", "Abu Talha Nowshad_12", "Abrar Rafi_10", "Abrar Tamim_09", "Aiman Noor_12", "Apon Mia_12", "Araf Ahmad_10", "Ashikur Rahman_10", "Ashraful Islam_10", "Atiqur Rahman_10", "Ayman Alam_08", "Azmaen Galib_12", "Badhon Rahman_10", "Enamul Haque Jewel_11", "Emtiaje_11", "Farhan Labib_08", "Fardeen Hassan_09", "Foyez Ahmed_13", "Foyzul Rijon_12", "Hafij_11", "Ibrahim khalil_08", "Illias Mahdi Adan_12", "Joyonto Sorkar_09", "Khan Mahmud Sunny_13", "Krishna Chandra Bagh_11", "Mahir Daiyan_12", "Md. Masum_08", "Md. Shurid_13", "Meharub Hossain Srijon_12", "Mehady Hasan_09", "Mehedi Hasan Jihad_09", "Mir Dider Ali Rakib_04", "Monjurul Imam Tonmoy_08", "Mubassir Rahman Alif_12", "Nasif Al Shahab_10", "Nazmus Saeid_11", "Nur e Alam Patwari_03", "Pranto Pall_10", "Rahat Hasan_07", "Rifat Tamim_12", "Rofik Islam_11", "Saad Chowdhury_12", "Sadman Sakib_12", "Samin Yeasir_13", "Sayed Ahmed Rahat_07", "Sazzad Hossain Hridoy_13", "Shahriar Nasib_11", "Shahriar Sajir_12", "Shawon_11", "Shihab_11", "Sifatuzzaman Sium_12", "Sudipto Mondol Mahin_12", "Tahsin Ahmed Tamim_11", "Tamim Bin Abdullah_09", "Tanzim Koushik_10", "Tasin Rahman_08", "Tarikul Islam_13", "Towhid Akram_08", "Zayed_08"
         ];
 
         const playersDiv = document.getElementById("players");
@@ -334,6 +327,10 @@
 
         function requestRollNumber() {
             socket.emit("roll-number");
+        }
+
+        function markCurrentNumberUnsold() {
+            socket.emit("mark-unsold");
         }
 
         // -------- SEARCH & FILTER --------
