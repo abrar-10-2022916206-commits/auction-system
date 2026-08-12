@@ -32,11 +32,12 @@ const MIN_PLAYERS = 9;
 const MAX_PLAYERS = 15;
 
 const TEAM_NAMES = [
-    "Neutron Stikers",
-    "Tokamak Titans",
-    "Deuterium  Dynamos",
-    "Plasma Blasters",
-    "Fusion United"
+            "Tiktok boyz",
+            "Disco boys",
+            "পারলে ঠেকাও",
+            "শূণ্য রান এক্সপ্রেস",
+            "আমরাই টপ আমরাই সব",
+            "সাইক্লোন"
 ];
 
 function createTeams() {
@@ -300,6 +301,10 @@ io.on('connection', socket => {
 
     socket.on('roll-number', () => {
         io.emit('roll-number');
+    });
+
+    socket.on('mark-unsold', () => {
+        io.emit('mark-unsold');
     });
 
     // ---- RESET ----
