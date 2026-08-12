@@ -126,6 +126,55 @@ h1 {
     100% { background-position: 200% center; }
 }
 
+/* ========== DEVELOPER CREDITS ========== */
+.developer-credit-corner {
+    position: fixed;
+    bottom: 10px;
+    right: 1px;
+    font-size: 16px;
+    font-weight: 400;
+    letter-spacing: 0.8px;
+    padding: 8px 10px;
+    border-radius: var(--radius);
+    background: rgba(5, 18, 10, 0.8);
+    backdrop-filter: blur(8px);
+    z-index: 999;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+    animation: creditColorShift 4s ease-in-out infinite;
+}
+
+@keyframes creditColorShift {
+    0% {
+        color: #00ff88;
+        border-color: rgba(0, 255, 136, 0.5);
+        box-shadow: 0 0 12px rgba(0, 255, 136, 0.3), 0 4px 16px rgba(0, 0, 0, 0.4);
+    }
+    25% {
+        color: #f1c40f;
+        border-color: rgba(241, 196, 15, 0.5);
+        box-shadow: 0 0 12px rgba(241, 196, 15, 0.3), 0 4px 16px rgba(0, 0, 0, 0.4);
+    }
+    50% {
+        color: #00f0ff;
+        border-color: rgba(0, 240, 255, 0.5);
+        box-shadow: 0 0 12px rgba(0, 240, 255, 0.3), 0 4px 16px rgba(0, 0, 0, 0.4);
+    }
+    75% {
+        color: #ff5555;
+        border-color: rgba(255, 51, 51, 0.5);
+        box-shadow: 0 0 12px rgba(255, 51, 51, 0.3), 0 4px 16px rgba(0, 0, 0, 0.4);
+    }
+    100% {
+        color: #00ff88;
+        border-color: rgba(0, 255, 136, 0.5);
+        box-shadow: 0 0 12px rgba(0, 255, 136, 0.3), 0 4px 16px rgba(0, 0, 0, 0.4);
+    }
+}
+
+.display-header-center {
+    text-align: center;
+}
+
 /* ========== MESSAGE & BANNER BOXES ========== */
 #msg-box {
     text-align: center;
