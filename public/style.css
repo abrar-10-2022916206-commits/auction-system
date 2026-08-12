@@ -571,7 +571,7 @@ h1 {
 /* ========== TEAMS DISPLAY ========== */
 #teams-container {
     display: grid;
-    grid-template-columns: repeat(5, 1fr);
+    grid-template-columns: repeat(6, 1fr);
     gap: 10px;
     padding: 6px 12px;
     max-width: 100%;
@@ -674,6 +674,16 @@ h1 {
 .team-box-4 { border-color: rgba(0, 255, 136, 0.15); }
 .team-box-4:hover { border-color: rgba(0, 255, 136, 0.3); box-shadow: var(--shadow-glow); }
 .team-box-4 h2 { color: var(--neon-green); text-shadow: 0 0 8px var(--neon-green-glow); }
+
+/* 5: Quantum Crushers (Orange/Burst Theme) */
+.team-box-5::before {
+    background: linear-gradient(135deg, transparent 0%, #ff8c00 25%, transparent 50%, #ff6a00 75%, transparent 100%);
+    background-size: 220% 220%;
+    animation: teamBorderGlow 2.4s linear infinite;
+}
+.team-box-5 { border-color: rgba(255, 140, 0, 0.15); }
+.team-box-5:hover { border-color: rgba(255, 140, 0, 0.3); box-shadow: var(--shadow-glow); }
+.team-box-5 h2 { color: #ff9933; text-shadow: 0 0 8px rgba(255, 140, 0, 0.3); }
 
 
 .team-box h2 {
