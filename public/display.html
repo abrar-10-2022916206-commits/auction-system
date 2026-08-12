@@ -59,7 +59,7 @@
 
     <!-- Auction stats footer -->
     <div class="stats-bar">
-        <div class="stat-chip">Total Start Budget: <span class="stat-val">5,000</span></div>
+        <div class="stat-chip">Total Start Budget: <span class="stat-val">6,000</span></div>
         <div class="stat-chip">Net Spent: <span class="stat-val" id="total-spent">0</span></div>
         <div class="stat-chip">Total Balance: <span class="stat-val" id="total-remaining">5,000</span></div>
     </div>
@@ -75,7 +75,7 @@
         const errorSound = new Audio("beep.mp3");
 
         // Team custom soccer crests
-        const TEAM_CRESTS = ["⚡", "🛡️", "🔥", "💥", "🤝"];
+        const TEAM_CRESTS = ["⚡", "🛡️", "🔥", "💥", "🤝", "🌟"];
 
         // -------- PARSE PLAYER NAME --------
         function parsePlayerName(name) {
@@ -365,8 +365,10 @@
             setTimeout(() => toast.remove(), 3000);
         }
 
-        // -------- RANDOM NUMBER (1–51) --------
-        let remainingNumbers = Array.from({ length: 54 }, (_, i) => i + 1);
+        // -------- RANDOM NUMBER (1–62) WITH UNSOLD TRACKING --------
+        let remainingNumbers = Array.from({ length: 62 }, (_, i) => i + 1);
+        let unsoldNumbers = [];
+        let currentDisplayedNumber = null;
 
         function shuffleNumbers(array) {
             const copy = [...array];
@@ -379,25 +381,56 @@
 
         function getNextUniqueNumber() {
             if (remainingNumbers.length === 0) {
+                // All main numbers drawn, now show unsold numbers
+                if (unsoldNumbers.length > 0) {
+                    const shuffled = shuffleNumbers(unsoldNumbers);
+                    const nextNumber = shuffled.pop();
+                    unsoldNumbers = shuffled;
+                    return { number: nextNumber, isUnsold: true };
+                }
                 return null;
             }
 
             const shuffled = shuffleNumbers(remainingNumbers);
             const nextNumber = shuffled.pop();
             remainingNumbers = shuffled;
-            return nextNumber;
+            return { number: nextNumber, isUnsold: false };
         }
 
         function rollRandomNumber() {
             const el = document.getElementById('random-number-value');
-            const num = getNextUniqueNumber();
+            const result = getNextUniqueNumber();
+            
+            if (result) {
+                currentDisplayedNumber = result.number;
+            }
+            
             // Brief flash animation
             el.classList.add('rolling');
             setTimeout(() => {
-                el.textContent = num !== null ? num : 'Done';
+                if (result) {
+                    const display = result.isUnsold ? `⚪ ${result.number}` : result.number;
+                    el.textContent = display;
+                    el.style.color = result.isUnsold ? '#f1c40f' : 'var(--neon-green)';
+                } else {
+                    el.textContent = 'All Done! ✅';
+                    el.style.color = 'var(--neon-green)';
+                }
                 el.classList.remove('rolling');
             }, 150);
         }
+
+        // -------- SOCKET: MARK CURRENT NUMBER AS UNSOLD --------
+        socket.on('mark-unsold', () => {
+            if (currentDisplayedNumber !== null) {
+                // Move current number from remaining to unsold
+                unsoldNumbers.push(currentDisplayedNumber);
+                currentDisplayedNumber = null;
+                showToast(`Number marked as unsold. Remaining: ${remainingNumbers.length}`, 'info');
+                // Draw next number
+                rollRandomNumber();
+            }
+        });
 
         // Roll on page load
         rollRandomNumber();
