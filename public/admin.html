@@ -1,0 +1,400 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Transfer Control Panel — NFL 2026</title>
+    <meta name="description"
+        content="Admin control panel for NPL Season 05 player transfer auction. Manage bids, teams, and bidding in real-time.">
+    <link rel="stylesheet" href="style.css">
+    <script src="/socket.io/socket.io.js"></script>
+</head>
+
+<body>
+
+    <!-- Toast Container -->
+    <div class="toast-container" id="toast-container"></div>
+
+    <!-- Header -->
+    <header class="page-header">
+        <img src="logo.png" alt="NPL Logo" class="logo">
+        <h1>NFL-2026 — Admin Control</h1>
+    </header>
+
+    <!-- Message Box -->
+    <div id="msg-box">Welcome! Ready to start the transfer market.</div>
+
+    <!-- Toolbar -->
+    <div class="admin-toolbar">
+        <div class="toolbar-left">
+            <div class="search-wrapper">
+                <input type="text" id="search-bar" placeholder="Search by serial # (1-51)" autocomplete="off">
+            </div>
+            <div class="filter-tabs">
+                <button class="filter-tab active" data-filter="all">All</button>
+                <button class="filter-tab" data-filter="unsold">Available</button>
+                <button class="filter-tab" data-filter="sold">Bid</button>
+            </div>
+        </div>
+        <div class="toolbar-right">
+            <div class="stats-bar" style="padding:0; margin:0;">
+                <div class="stat-chip">
+                    <span>Bid:</span>
+                    <span class="stat-val" id="stat-sold">0</span>
+                </div>
+                <div class="stat-chip">
+                    <span>Available:</span>
+                    <span class="stat-val" id="stat-remaining">64</span>
+                </div>
+            </div>
+            <button class="btn btn-reset" id="unsold-btn" onclick="requestRollNumber()">🎲 Unsold</button>
+            <button class="btn btn-reset" id="reset-btn" onclick="confirmReset()">🔄 Reset Market</button>
+        </div>
+    </div>
+
+    <!-- Player List -->
+    <div class="admin-container" id="players"></div>
+
+    <!-- Confirm Reset Modal -->
+    <div class="modal-overlay" id="reset-modal">
+        <div class="modal-box">
+            <h3>⚠️ Reset Transfer Market?</h3>
+            <p>This will clear all bid activity and restore team budgets. This action cannot be undone. Are you sure?</p>
+            <div class="modal-actions">
+                <button class="btn btn-reset" onclick="doReset()">Yes, Reset</button>
+                <button class="btn btn-reset" onclick="closeResetModal()">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const socket = io();
+
+        const errorSound = new Audio("beep.mp3");
+
+        // -------- TEAM CONFIG --------
+        const BASE_PLAYER_PRICE = 20;
+        const teamNames = [
+            "Neutron Stikers",
+            "Tokamak Titans",
+            "Deuterium  Dynamos",
+            "Plasma Blasters",
+            "Fusion United"
+        ];
+
+        let playerOwners = {};
+
+        const playerList = [
+            "Ashik Miah_10",
+            "Md. Meharub Hossain_12",
+            "Md. Ripon Hossen_NE-11",
+            "Sudipto Mondal Mahin_12",
+            "Dyhan Alam_NE12",
+            "Fahim Shahriar_11",
+            "Sifatuzzaman Sium_NE-12",
+            "Md Ashab Al Hasib Kabyo_12",
+            "MD Ilia's mahdi adan_12", "Nabil Ahmed_NE-12(104)", "Shihab_11", "Md Tarikul Islam_13", "Emtiaje_11", "Ayman alam_8th", "Enamul Hoque Jewel_11", "Sajir_12", "Tanzim Koushik_10", "Md Rofik Islam_NE-11", "Pranto_10", "MD Shurid_13", "Nahid_6th", "Khan Mahmud Sunny_13", "Saeid_11", "Mubassir Rahman_12", "Saad Chowdhury_12", "Rifat Tamim_12", "Fehazul Islam Sawmiq_11", "Sifat_11", "Rafat Rahman Aronno_11", "Apon_12", "Araf Ahamad_10", "Munna_11", "Md Tanzim Alahi_9th", "Shadab zafir shion_12", "Robiul_12", "Azmaen Galib_12", "Aiman noor_12", "Abu Sadat Al Sabit_13", "Rijon_12th", "Tasin Rahman_8", "Sajjad Hossain Hridoy_NE-13", "Jihad_9th", "Ashim mazumder santo_9th", "Ashraful Islam_10th", "Mehady Hasan_9", "Abrar Tamim_9", "Saadman Zaman Bevore_11th", "Fardeen_9", "Ariful Islam_7", "Farhan Arnab_7", "Ashik Reza_6","Shahriar Nasib_11","Maruf_8","Noman_8"
+        ];
+
+        const playersDiv = document.getElementById("players");
+
+        // -------- PARSE PLAYER NAME --------
+        function parsePlayerName(name) {
+            const parts = name.split('_');
+            if (parts.length > 1) {
+                return {
+                    displayName: parts[0].trim(),
+                    badge: parts.slice(1).join('_').trim()
+                };
+            }
+            return { displayName: name, badge: null };
+        }
+
+        // Render all player rows
+        playerList.forEach((player, index) => {
+            const num = index + 1;
+            const safeId = player.replace(/[^a-zA-Z0-9]/g, '_');
+            const parsed = parsePlayerName(player);
+
+            let selectHTML = `<select id="team-${safeId}" aria-label="Select team for ${player}">`;
+            teamNames.forEach((team, ti) => {
+                selectHTML += `<option value="${ti}">${team}</option>`;
+            });
+            selectHTML += `</select>`;
+
+            const row = document.createElement("div");
+            row.className = "player-row";
+            row.id = `row-${safeId}`;
+            row.dataset.player = player;
+            row.dataset.index = index;
+
+            const badgeHTML = parsed.badge ? `<span class="player-badge">${parsed.badge}</span>` : "";
+
+            row.innerHTML = `
+                <span class="player-number">${num}</span>
+                <div class="player-name-wrapper">
+                    <span class="player-name">${parsed.displayName}</span>
+                    ${badgeHTML}
+                    <span class="player-owner"></span>
+                    <span class="player-original-cost"></span>
+                </div>
+                <span class="sold-badge">✔ BID</span>
+                <input
+                    type="number"
+                    id="bid-${safeId}"
+                    min="20"
+                    step="5"
+                    placeholder="Min 20"
+                    aria-label="Transfer bid amount for ${player}"
+                >
+                ${selectHTML}
+                <input
+                    type="number"
+                    id="sell-price-${safeId}"
+                    min="20"
+                    step="5"
+                    placeholder="Transfer price"
+                    aria-label="Transfer price for ${player}"
+                    disabled
+                >
+                <div class="action-buttons-group" style="display: flex; gap: 6px; flex-wrap: wrap;">
+                    <button class="submit-btn" id="submit-${safeId}" type="button">Bid</button>
+                    <button class="claim-btn" id="claim-${safeId}" type="button">Claim (0)</button>
+                    <button class="sell-btn" id="sell-${safeId}" type="button" disabled>Transfer</button>
+                    <button class="release-btn" id="release-${safeId}" type="button" disabled>Release</button>
+                </div>
+            `;
+
+            playersDiv.appendChild(row);
+            const submitBtn = row.querySelector('.submit-btn');
+            const claimBtn = row.querySelector('.claim-btn');
+            const sellBtn = row.querySelector('.sell-btn');
+            const releaseBtn = row.querySelector('.release-btn');
+            const bidInput = row.querySelector(`#bid-${safeId}`);
+            const sellPriceInput = row.querySelector(`#sell-price-${safeId}`);
+
+            if (bidInput) {
+                bidInput.addEventListener('keydown', event => {
+                    if (event.key === 'Enter') submitBid(player);
+                });
+            }
+            if (sellPriceInput) {
+                sellPriceInput.addEventListener('keydown', event => {
+                    if (event.key === 'Enter') sellPlayer(player);
+                });
+            }
+            if (submitBtn) submitBtn.addEventListener('click', () => submitBid(player));
+            if (claimBtn) claimBtn.addEventListener('click', () => freeClaim(player));
+            if (sellBtn) sellBtn.addEventListener('click', () => sellPlayer(player));
+            if (releaseBtn) releaseBtn.addEventListener('click', () => releasePlayer(player));
+        });
+
+        // -------- BID SUBMISSION --------
+        function safeId(player) {
+            return player.replace(/[^a-zA-Z0-9]/g, '_');
+        }
+
+        function submitBid(player) {
+            const id = safeId(player);
+            const bidInput = document.getElementById(`bid-${id}`);
+            const bid = bidInput.value;
+            const teamIndex = document.getElementById(`team-${id}`).value;
+
+            if (!bid || isNaN(parseInt(bid))) {
+                showMsg("Please enter a valid bid amount.", "error");
+                errorSound.play().catch(() => { });
+                bidInput.focus();
+                return;
+            }
+
+            socket.emit("bid", { player, bid, teamIndex });
+            bidInput.value = '';
+        }
+
+        function freeClaim(player) {
+            const id = safeId(player);
+            const teamIndex = document.getElementById(`team-${id}`).value;
+            socket.emit("free-claim", { player, teamIndex });
+        }
+
+        function sellPlayer(player) {
+            const id = safeId(player);
+            const sellPriceValue = document.getElementById(`sell-price-${id}`).value;
+            const buyerIndex = parseInt(document.getElementById(`team-${id}`).value, 10);
+            const sellPrice = parseInt(sellPriceValue, 10);
+
+            if (isNaN(sellPrice) || sellPrice < BASE_PLAYER_PRICE) {
+                showMsg(`Please enter a valid transfer price of at least ${BASE_PLAYER_PRICE}.`, "error");
+                errorSound.play().catch(() => { });
+                return;
+            }
+
+            socket.emit("sell-player", { player, buyerIndex, price: sellPrice });
+            document.getElementById(`sell-price-${id}`).value = '';
+        }
+
+        function releasePlayer(player) {
+            const id = safeId(player);
+            const ownerName = playerOwners[player];
+            if (!ownerName) {
+                showMsg(`${player} is not owned by any team.`, "error");
+                return;
+            }
+            if (!confirm(`Release ${player.split('_')[0]} back to free market? The team will be refunded their original bid.`)) return;
+            socket.emit("release-player", { player });
+        }
+
+        socket.on("update", data => {
+            const soldSet = new Set(data.soldPlayers || []);
+            let soldCount = soldSet.size;
+
+            playerOwners = {};
+            // Map player name => { teamName, originalBid }
+            const playerDetails = {};
+            if (data.teams && Array.isArray(data.teams)) {
+                data.teams.forEach(team => {
+                    team.players.forEach(player => {
+                        playerOwners[player.name] = team.name;
+                        playerDetails[player.name] = { teamName: team.name, bid: player.bid };
+                    });
+                });
+            }
+
+            document.querySelectorAll('.player-row').forEach(row => {
+                const player = row.dataset.player;
+                const isSold = soldSet.has(player);
+                row.classList.toggle('sold', isSold);
+
+                const submitBtn = row.querySelector('.submit-btn');
+                const claimBtn = row.querySelector('.claim-btn');
+                const sellBtn = row.querySelector('.sell-btn');
+                const releaseBtn = row.querySelector('.release-btn');
+                const bidInput = row.querySelector(`#bid-${safeId(player)}`);
+                const sellPriceInput = row.querySelector(`#sell-price-${safeId(player)}`);
+                const selectEl = row.querySelector('select');
+                const ownerLabel = row.querySelector('.player-owner');
+                const costLabel = row.querySelector('.player-original-cost');
+
+                const ownerName = playerOwners[player] || '';
+                const details = playerDetails[player];
+                ownerLabel.textContent = ownerName ? `Owner: ${ownerName}` : '';
+                row.dataset.owner = ownerName;
+
+                if (costLabel) {
+                    if (isSold && details) {
+                        costLabel.textContent = details.bid === 0 ? '(FREE)' : `(Bid for: ${details.bid})`;
+                    } else {
+                        costLabel.textContent = '';
+                    }
+                }
+
+                const selectedTeamIndex = parseInt(selectEl.value, 10);
+                const isOwnTeamSelected = ownerName && ownerName === teamNames[selectedTeamIndex];
+
+                if (submitBtn) submitBtn.disabled = isSold;
+                if (claimBtn) claimBtn.disabled = isSold;
+                if (sellBtn) sellBtn.disabled = !isSold || isOwnTeamSelected;
+                if (releaseBtn) releaseBtn.disabled = !isSold;
+                if (bidInput) bidInput.disabled = isSold;
+                if (sellPriceInput) sellPriceInput.disabled = !isSold;
+                if (selectEl) selectEl.disabled = false;
+
+                // Update sell/transfer button disabled state when team dropdown changes
+                if (selectEl && !selectEl._sellListenerAdded) {
+                    selectEl._sellListenerAdded = true;
+                    selectEl.addEventListener('change', () => {
+                        const selIdx = parseInt(selectEl.value, 10);
+                        const own = playerOwners[player] || '';
+                        const isOwn = own && own === teamNames[selIdx];
+                        if (sellBtn) sellBtn.disabled = !row.classList.contains('sold') || isOwn;
+                    });
+                }
+            });
+
+            document.getElementById('stat-sold').textContent = soldCount;
+            document.getElementById('stat-remaining').textContent = playerList.length - soldCount;
+
+            applyFilter();
+        });
+
+        // -------- RESET MODAL --------
+        function confirmReset() {
+            document.getElementById('reset-modal').classList.add('active');
+        }
+
+        function closeResetModal() {
+            document.getElementById('reset-modal').classList.remove('active');
+        }
+
+        function doReset() {
+            socket.emit("reset");
+            closeResetModal();
+        }
+
+        function requestRollNumber() {
+            socket.emit("roll-number");
+        }
+
+        // -------- SEARCH & FILTER --------
+        let currentFilter = 'all';
+
+        document.getElementById('search-bar').addEventListener('input', applyFilter);
+
+        document.querySelectorAll('.filter-tab').forEach(tab => {
+            tab.addEventListener('click', () => {
+                document.querySelectorAll('.filter-tab').forEach(t => t.classList.remove('active'));
+                tab.classList.add('active');
+                currentFilter = tab.dataset.filter;
+                applyFilter();
+            });
+        });
+
+        function applyFilter() {
+            const query = document.getElementById('search-bar').value.trim().replace(/^#/, '').toLowerCase();
+            document.querySelectorAll('.player-row').forEach(row => {
+                const serialText = row.querySelector('.player-number')?.textContent?.trim() || '';
+                const isSold = row.classList.contains('sold');
+
+                const matchesSearch = !query || serialText === query || serialText.startsWith(query);
+                const matchesFilter =
+                    currentFilter === 'all' ||
+                    (currentFilter === 'sold' && isSold) ||
+                    (currentFilter === 'unsold' && !isSold);
+
+                row.classList.toggle('hidden', !(matchesSearch && matchesFilter));
+            });
+        }
+
+        // -------- SOCKET EVENTS --------
+        socket.on("message", data => {
+            showMsg(data.text, data.type);
+            showToast(data.text, data.type);
+
+            if (data.type === "error") errorSound.play().catch(() => { });
+        });
+
+        // -------- UI HELPERS --------
+        function showMsg(text, type) {
+            const box = document.getElementById("msg-box");
+            box.textContent = text;
+            box.className = type || '';
+        }
+
+        function showToast(text, type) {
+            const container = document.getElementById('toast-container');
+            const toast = document.createElement('div');
+            toast.className = `toast ${type || ''}`;
+            toast.textContent = text;
+            container.appendChild(toast);
+            setTimeout(() => toast.remove(), 3000);
+        }
+
+        // Close modal on overlay click
+        document.getElementById('reset-modal').addEventListener('click', e => {
+            if (e.target === e.currentTarget) closeResetModal();
+        });
+    </script>
+</body>
+
+</html>

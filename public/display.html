@@ -1,0 +1,407 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Live Auction Display — NFL 2026</title>
+    <meta name="description" content="Live football auction display for NPL Season 05. Real-time transfer budgets, squads, and bidding updates.">
+    <link rel="stylesheet" href="style.css">
+    <script src="/socket.io/socket.io.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+</head>
+<body>
+
+    <!-- Toast Container -->
+    <div class="toast-container" id="toast-container"></div>
+
+    <!-- Celebration Overlay -->
+    <div class="celebration-overlay" id="celebration-overlay">
+        <div class="celebration-card">
+            <div class="celebration-title">⚽ NEW BIDDING 📝</div>
+            <div class="celebration-jersey-container">
+                <span class="celebration-jersey">👕</span>
+            </div>
+            <div class="celebration-player-name" id="celebrate-player-name">Player Name</div>
+            <div class="celebration-team-name" id="celebrate-team-name">Team Name</div>
+            <div class="celebration-price" id="celebrate-price">💰 000</div>
+        </div>
+    </div>
+
+    <!-- Display Header -->
+    <header class="display-header" id="display-header">
+        <!-- <img src="logo.png" alt="NPL Logo" class="logo"> -->
+        <div class="display-header-center">
+            <h1>NFL 2026 Auction Display</h1>
+        </div>
+        <div class="display-header-actions">
+            <div class="stat-chip" title="Total players bid">
+                ⚽ Bid: <span class="stat-val" id="total-sold">0</span>
+            </div>
+            <button id="download-btn" class="btn btn-export" onclick="exportPDF()">📄 Export PDF</button>
+        </div>
+    </header>
+
+    <!-- Summary Row -->
+    <div class="display-summary-row">
+        <div class="sold-banner" id="msg-box">
+            Waiting for transfer activity to begin…
+        </div>
+
+        <div class="random-number-container" id="random-number-container">
+            <div class="random-number-label">🎲 Next Pick</div>
+            <div class="random-number-value" id="random-number-value">—</div>
+        </div>
+    </div>
+
+    <!-- Teams Grid -->
+    <div id="teams-container"></div>
+
+    <!-- Auction stats footer -->
+    <div class="stats-bar">
+        <div class="stat-chip">Total Start Budget: <span class="stat-val">5,000</span></div>
+        <div class="stat-chip">Net Spent: <span class="stat-val" id="total-spent">0</span></div>
+        <div class="stat-chip">Total Balance: <span class="stat-val" id="total-remaining">5,000</span></div>
+    </div>
+
+    <script>
+        const socket = io();
+        const container = document.getElementById("teams-container");
+
+        const BASE_PLAYER_PRICE = 20;
+        const MIN_PLAYERS = 9;
+        const BASE_TEAM_AMOUNT = 1000;
+
+        const errorSound = new Audio("beep.mp3");
+
+        // Team custom soccer crests
+        const TEAM_CRESTS = ["⚡", "🛡️", "🔥", "💥", "🤝"];
+
+        // -------- PARSE PLAYER NAME --------
+        function parsePlayerName(name) {
+            const parts = name.split('_');
+            if (parts.length > 1) {
+                return {
+                    displayName: parts[0].trim(),
+                    badge: parts.slice(1).join('_').trim()
+                };
+            }
+            return { displayName: name, badge: null };
+        }
+
+        // -------- RENDER TEAMS --------
+        function renderTeams(teams) {
+            container.innerHTML = "";
+
+            // totalSpent = sum of all player bids currently in rosters
+            // totalBalance = sum of all current team balances
+            let totalBalance = 0;
+
+            teams.forEach((team, idx) => {
+                const currentPlayers = team.players.length;
+                const remaining = MIN_PLAYERS - currentPlayers;
+
+                let maxBid = 0;
+                if (remaining > 0) {
+                    const minimumKeep = Math.max(0, remaining - 1) * BASE_PLAYER_PRICE;
+                    maxBid = Math.max(0, team.balance - minimumKeep);
+                }
+                if (maxBid < BASE_PLAYER_PRICE) maxBid = 0;
+
+                // Net spent = original budget minus current balance
+                totalBalance += team.balance;
+
+                const progress = Math.min((currentPlayers / MIN_PLAYERS) * 100, 100);
+
+                const playersHTML = team.players.map((p, i) => {
+                    const parsed = parsePlayerName(p.name);
+                    const badgeHTML = parsed.badge ? `<span class="squad-player-badge">${parsed.badge}</span>` : "";
+                    return `<tr>
+                        <td style="text-align:left; padding-left:8px;">
+                            <div class="squad-player-name">
+                                ${i + 1}. ${parsed.displayName} ${badgeHTML}
+                            </div>
+                        </td>
+                        <td>💰 ${p.bid}</td>
+                    </tr>`;
+                }).join("");
+
+                const div = document.createElement("div");
+                div.className = `team-box team-box-${idx}`;
+                div.id = `team-box-${idx}`;
+
+                const crest = TEAM_CRESTS[idx] || "⚽";
+                div.innerHTML = `
+                    <h2>${crest} ${team.name}</h2>
+                    <div class="team-meta">
+                        <div>
+                            <span class="team-balance-label">Transfer Budget</span>
+                            <span class="team-balance">${team.balance}</span>
+                        </div>
+                        <div class="team-max-bid">
+                            <span class="team-max-bid-label">Max Bid</span>
+                            <span class="team-max-bid-val">${maxBid > 0 ? maxBid : '—'}</span>
+                        </div>
+                    </div>
+                    <div class="player-count-bar">
+                        <span class="player-count-label">Squad: ${currentPlayers} / ${MIN_PLAYERS}</span>
+                        <div class="progress-bar">
+                            <div class="progress-fill" style="width: ${progress}%"></div>
+                        </div>
+                    </div>
+                    <table>
+                        <thead>
+                            <tr><th style="text-align:left; padding-left:8px;">Squad Member</th><th>Value</th></tr>
+                        </thead>
+                        <tbody>
+                            ${playersHTML || '<tr><td colspan="2" style="color:var(--text-secondary);font-size:12px;text-align:center;padding:12px 0;">Empty Roster</td></tr>'}
+                        </tbody>
+                    </table>
+                `;
+
+                container.appendChild(div);
+            });
+
+            const totalNetSpent = BASE_TEAM_AMOUNT * teams.length - totalBalance;
+
+            document.getElementById('total-sold').textContent = teams.reduce((a, t) => a + t.players.length, 0);
+            document.getElementById('total-spent').textContent = totalNetSpent >= 0 ? totalNetSpent : `+${Math.abs(totalNetSpent)} gained`;
+            document.getElementById('total-remaining').textContent = totalBalance;
+        }
+
+        // -------- PLAY REFEREE WHISTLE SOUND --------
+        function playWhistleSound() {
+            try {
+                const ctx = new (window.AudioContext || window.webkitAudioContext)();
+                
+                // Trill / Whistle trill effect requires 2 oscillators detuned
+                const osc1 = ctx.createOscillator();
+                const osc2 = ctx.createOscillator();
+                const gainNode = ctx.createGain();
+                
+                osc1.type = 'sine';
+                osc1.frequency.setValueAtTime(2000, ctx.currentTime);
+                osc1.frequency.linearRampToValueAtTime(2200, ctx.currentTime + 0.15);
+                
+                osc2.type = 'triangle';
+                osc2.frequency.setValueAtTime(2020, ctx.currentTime);
+                osc2.frequency.linearRampToValueAtTime(2220, ctx.currentTime + 0.15);
+                
+                // Low Frequency Oscillator for trill modulation
+                const lfo = ctx.createOscillator();
+                const lfoGain = ctx.createGain();
+                lfo.frequency.value = 35; // 35 Hz trill
+                lfoGain.gain.value = 40;  // depth of pitch fluctuation
+                
+                lfo.connect(lfoGain);
+                lfoGain.connect(osc1.frequency);
+                lfoGain.connect(osc2.frequency);
+                
+                gainNode.gain.setValueAtTime(0, ctx.currentTime);
+                gainNode.gain.linearRampToValueAtTime(0.25, ctx.currentTime + 0.04);
+                // Double blast whistle pattern
+                gainNode.gain.setValueAtTime(0.25, ctx.currentTime + 0.18);
+                gainNode.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.35);
+                
+                osc1.connect(gainNode);
+                osc2.connect(gainNode);
+                gainNode.connect(ctx.destination);
+                
+                lfo.start();
+                osc1.start();
+                osc2.start();
+                
+                lfo.stop(ctx.currentTime + 0.4);
+                osc1.stop(ctx.currentTime + 0.4);
+                osc2.stop(ctx.currentTime + 0.4);
+            } catch (e) {
+                console.log("Web Audio Whistle synthesis failed:", e);
+            }
+        }
+
+        // -------- CONFETTI CELEBRATION --------
+        function launchConfetti() {
+            const colors = ['#00ff88', '#f1c40f', '#ffffff', '#00f0ff', '#bd00ff', '#ff3333'];
+            for (let i = 0; i < 75; i++) {
+                const particle = document.createElement('div');
+                particle.className = 'confetti-particle';
+                particle.style.left = Math.random() * 100 + 'vw';
+                particle.style.backgroundColor = colors[Math.floor(Math.random() * colors.length)];
+                particle.style.width = (Math.random() * 7 + 6) + 'px';
+                particle.style.height = (Math.random() * 7 + 6) + 'px';
+                particle.style.animationDelay = (Math.random() * 0.4) + 's';
+                particle.style.animationDuration = (Math.random() * 1.5 + 1.5) + 's';
+                particle.style.transform = `rotate(${Math.random() * 360}deg)`;
+                
+                document.body.appendChild(particle);
+                
+                setTimeout(() => particle.remove(), 3000);
+            }
+        }
+
+        // -------- TRIGGER CELEBRATION --------
+        function triggerBiddingCelebration(playerName, teamName, amount, isTransfer = false) {
+            const overlay = document.getElementById('celebration-overlay');
+            const titleEl = overlay.querySelector('.celebration-title');
+            const jerseyEl = overlay.querySelector('.celebration-jersey');
+            const nameEl = document.getElementById('celebrate-player-name');
+            const teamEl = document.getElementById('celebrate-team-name');
+            const priceEl = document.getElementById('celebrate-price');
+            const card = overlay.querySelector('.celebration-card');
+            
+            const parsed = parsePlayerName(playerName);
+            nameEl.textContent = parsed.displayName;
+            if (parsed.badge) {
+                nameEl.innerHTML += ` <span class="player-badge">${parsed.badge}</span>`;
+            }
+            
+            teamEl.textContent = teamName;
+
+            if (isTransfer) {
+                titleEl.textContent = '🔄 TRANSFER!';
+                titleEl.style.color = '#f1c40f';
+                jerseyEl.textContent = '💰';
+                card.style.borderColor = '#f1c40f';
+                card.style.boxShadow = '0 0 50px rgba(241,196,15,0.5), inset 0 0 20px rgba(241,196,15,0.1)';
+                priceEl.textContent = `💸 ${amount}`;
+                priceEl.style.background = 'linear-gradient(135deg, rgba(241,196,15,0.25), rgba(0,0,0,0.4))';
+                priceEl.style.borderColor = 'rgba(241,196,15,0.4)';
+            } else {
+                titleEl.textContent = '⚽ NEW BIDDING 📝';
+                titleEl.style.color = 'var(--neon-green)';
+                jerseyEl.textContent = '👕';
+                card.style.borderColor = 'var(--neon-green)';
+                card.style.boxShadow = '0 0 50px rgba(0, 255, 136, 0.4), inset 0 0 20px rgba(0, 255, 136, 0.1)';
+                priceEl.textContent = amount === "FREE" ? "FREE TRANSFER" : `💰 ${amount}`;
+                priceEl.style.background = 'linear-gradient(135deg, rgba(0, 255, 136, 0.2), rgba(0, 0, 0, 0.4))';
+                priceEl.style.borderColor = 'rgba(0, 255, 136, 0.3)';
+            }
+            
+            overlay.classList.add('active');
+            
+            playWhistleSound();
+            launchConfetti();
+            
+            setTimeout(() => {
+                overlay.classList.remove('active');
+            }, 3800);
+        }
+
+        // -------- SOCKET EVENTS --------
+        socket.on("update", data => {
+            renderTeams(data.teams);
+        });
+
+        socket.on("roll-number", () => {
+            rollRandomNumber();
+        });
+
+        socket.on("message", data => {
+            const box = document.getElementById("msg-box");
+            box.textContent = data.text;
+            box.className = `sold-banner ${data.type || ''}`;
+
+            showToast(data.text, data.type);
+
+            if (data.type === "error") {
+                errorSound.play().catch(() => {});
+            } else if (data.type === "success") {
+                // Parse bidding message details
+                // e.g. "⚽ MD Ilia's mahdi adan_12 signed by Plasma Blasters for 65! 📝"
+                // or "⚽ Md. Meharub Hossain_12 drafted for FREE by Neutron Stikers! 📝"
+                // or "🔄 PlayerName transferred from TeamA to TeamB for 80! (Profit: +20) 📝"
+                const text = data.text;
+                const bidMatch = text.match(/⚽ (.*) (?:signed|bid) by (.*) for (\d+)! 📝/);
+                const freeMatch = text.match(/⚽ (.*) drafted for FREE by (.*)! 📝/);
+                const transferMatch = text.match(/🔄 (.*) transferred from .* to (.*) for (\d+)!/);
+                
+                if (bidMatch) {
+                    triggerBiddingCelebration(bidMatch[1], bidMatch[2], bidMatch[3], false);
+                } else if (freeMatch) {
+                    triggerBiddingCelebration(freeMatch[1], freeMatch[2], "FREE", false);
+                } else if (transferMatch) {
+                    triggerBiddingCelebration(transferMatch[1], transferMatch[2], transferMatch[3], true);
+                }
+
+                // Roll a new random number after every successful bid
+                rollRandomNumber();
+            }
+        });
+
+        // -------- EXPORT PDF --------
+        function exportPDF() {
+            const header = document.getElementById('display-header');
+            const downloadBtn = document.getElementById('download-btn');
+            const toastContainer = document.getElementById('toast-container');
+
+            // Temporarily hide UI-only elements
+            header.style.display = 'none';
+            downloadBtn.style.display = 'none';
+            toastContainer.style.display = 'none';
+
+            const options = {
+                margin: 8,
+                filename: `NPL_Season05_Auction_${new Date().toISOString().split('T')[0]}.pdf`,
+                image: { type: 'jpeg', quality: 0.98 },
+                html2canvas: { scale: 2, backgroundColor: '#05140b' },
+                jsPDF: { unit: 'mm', format: 'a3', orientation: 'landscape' }
+            };
+
+            html2pdf().set(options).from(document.body).save().then(() => {
+                header.style.display = '';
+                downloadBtn.style.display = '';
+                toastContainer.style.display = '';
+                showToast("PDF exported successfully!", "success");
+            });
+        }
+
+        // -------- TOAST --------
+        function showToast(text, type) {
+            const container = document.getElementById('toast-container');
+            const toast = document.createElement('div');
+            toast.className = `toast ${type || ''}`;
+            toast.textContent = text;
+            container.appendChild(toast);
+            setTimeout(() => toast.remove(), 3000);
+        }
+
+        // -------- RANDOM NUMBER (1–51) --------
+        let remainingNumbers = Array.from({ length: 54 }, (_, i) => i + 1);
+
+        function shuffleNumbers(array) {
+            const copy = [...array];
+            for (let i = copy.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [copy[i], copy[j]] = [copy[j], copy[i]];
+            }
+            return copy;
+        }
+
+        function getNextUniqueNumber() {
+            if (remainingNumbers.length === 0) {
+                return null;
+            }
+
+            const shuffled = shuffleNumbers(remainingNumbers);
+            const nextNumber = shuffled.pop();
+            remainingNumbers = shuffled;
+            return nextNumber;
+        }
+
+        function rollRandomNumber() {
+            const el = document.getElementById('random-number-value');
+            const num = getNextUniqueNumber();
+            // Brief flash animation
+            el.classList.add('rolling');
+            setTimeout(() => {
+                el.textContent = num !== null ? num : 'Done';
+                el.classList.remove('rolling');
+            }, 150);
+        }
+
+        // Roll on page load
+        rollRandomNumber();
+    </script>
+
+</body>
+</html>
