@@ -37,7 +37,7 @@ const TEAM_NAMES = [
             "পারলে ঠেকাও",
             "শূণ্য রান এক্সপ্রেস",
             "আমরাই টপ আমরাই সব",
-            "সাইক্লোন"
+            "Syndicate 404"
 ];
 
 function createTeams() {
