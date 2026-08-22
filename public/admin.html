@@ -4,35 +4,34 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Transfer Control Panel — NFL 2026</title>
+    <title>Transfer Control Panel</title>
     <meta name="description"
-        content="Admin control panel for NPL Season 05 player transfer auction. Manage bids, teams, and bidding in real-time.">
+        content="Admin control panel for player transfer auction. Manage bids, teams, and bidding in real-time.">
     <link rel="stylesheet" href="style.css">
     <script src="/socket.io/socket.io.js"></script>
 </head>
 
 <body>
 
-    <!-- Toast Container -->
+    <!-- Toast Notifications Container -->
     <div class="toast-container" id="toast-container"></div>
 
-    <!-- Header -->
+    <!-- Dynamic Header -->
     <header class="page-header">
-        <!-- <img src="logo.png" alt="NPL Logo" class="logo"> -->
-        <h1>Nuclear Night Short-pitch Season-02 — Admin Control</h1>
+        <h1 id="page-header-title">Tournament Auction Control</h1>
     </header>
 
     <!-- Developer Credit -->
     <div class="developer-credit-corner">© Developed by ABRAR1552</div>
 
-    <!-- Message Box -->
+    <!-- Live Status Banner -->
     <div id="msg-box">Welcome! Ready to start the transfer market.</div>
 
-    <!-- Toolbar -->
+    <!-- Admin Toolbar & Search Controls -->
     <div class="admin-toolbar">
         <div class="toolbar-left">
             <div class="search-wrapper">
-                <input type="text" id="search-bar" placeholder="Search by serial # (1-66)" autocomplete="off">
+                <input type="text" id="search-bar" placeholder="Search by serial #" autocomplete="off">
             </div>
             <div class="filter-tabs">
                 <button class="filter-tab active" data-filter="all">All</button>
@@ -48,18 +47,97 @@
                 </div>
                 <div class="stat-chip">
                     <span>Available:</span>
-                    <span class="stat-val" id="stat-remaining">64</span>
+                    <span class="stat-val" id="stat-remaining">0</span>
                 </div>
             </div>
+            <a href="/playerProfileShowing.html" target="_blank" class="btn btn-reset" style="text-decoration:none;">📺 Profile Stage</a>
+            <button class="btn btn-reset" id="setup-btn" onclick="openSetupModal()">⚙️ Setup & Import</button>
             <button class="btn btn-reset" id="unsold-btn" onclick="markCurrentNumberUnsold()">⏭️ Skip (Unsold)</button>
             <button class="btn btn-reset" id="reset-btn" onclick="confirmReset()">🔄 Reset Market</button>
         </div>
     </div>
 
-    <!-- Player List -->
+    <!-- Main Player List Container -->
     <div class="admin-container" id="players"></div>
 
-    <!-- Confirm Reset Modal -->
+    <!-- Modal: Auction Setup & Data Import -->
+    <div class="modal-overlay" id="setup-modal">
+        <div class="modal-box modal-box-large">
+            <h3>⚙️ Auction Setup & Data Import</h3>
+            <p>Enter tournament title, import text files (`players.txt` & `teams.txt`), upload player profile images/videos, or configure parameters below.</p>
+
+            <div class="param-field" style="margin-bottom: 16px;">
+                <label style="font-size: 13px; font-weight: 700; color: var(--neon-green);">🏆 Tournament / Auction Title:</label>
+                <input type="text" id="setup-title" placeholder="e.g. Nuclear Football League 2026" style="font-size: 15px; padding: 10px 14px;">
+            </div>
+            
+            <div class="setup-grid">
+                <!-- Import Players Column -->
+                <div class="setup-col">
+                    <label class="setup-label">📄 Import Players (players.txt)</label>
+                    <div class="file-dropzone" id="players-dropzone">
+                        <span>📁 Click or drag players.txt file</span>
+                        <input type="file" id="players-file" accept=".txt" style="display:none;">
+                    </div>
+                    <textarea id="players-text" placeholder="Format: PlayerName_BatchNo/JerseyNo (one per line)&#10;e.g. ABDE Viliers_17&#10;Neymar Jr_10"></textarea>
+                    <div class="setup-hint" id="players-count-hint">0 players loaded</div>
+                </div>
+
+                <!-- Import Teams Column -->
+                <div class="setup-col">
+                    <label class="setup-label">🛡️ Import Teams (teams.txt)</label>
+                    <div class="file-dropzone" id="teams-dropzone">
+                        <span>📁 Click or drag teams.txt file</span>
+                        <input type="file" id="teams-file" accept=".txt" style="display:none;">
+                    </div>
+                    <textarea id="teams-text" placeholder="Format: Team Name (one per line)&#10;e.g. South Africa&#10;Brazil"></textarea>
+                    <div class="setup-hint" id="teams-count-hint">0 teams loaded</div>
+                </div>
+            </div>
+
+            <!-- Profile Media Upload Section -->
+            <div style="margin: 16px 0; padding: 16px; background: rgba(0, 255, 136, 0.04); border: 1px dashed var(--border); border-radius: var(--radius); text-align: left;">
+                <label class="setup-label" style="margin-bottom: 8px;">📸 Upload Profile Media (Images / Videos)</label>
+                <p style="font-size: 12px; color: var(--text-secondary); margin-bottom: 12px;">
+                    Select folder or files named by serial number (e.g. <code>1.png</code>, <code>2.jpg</code>, <code>3.mp4</code>, <code>4.webm</code>). Serial numbers correspond to line numbers in <code>players.txt</code>.
+                </p>
+                <div style="display: flex; gap: 12px; flex-wrap: wrap;">
+                    <div class="file-dropzone" id="media-dropzone" style="flex: 1; min-width: 220px; padding: 14px;">
+                        <span>📁 Select Folder or Files (1.png, 2.mp4...)</span>
+                        <input type="file" id="media-files-input" accept="image/*,video/*" multiple style="display:none;">
+                    </div>
+                </div>
+                <div class="setup-hint" id="media-count-hint" style="margin-top: 6px; text-align: left;">0 profile media files uploaded</div>
+            </div>
+
+            <!-- Parameters Grid -->
+            <div class="setup-params-row">
+                <div class="param-field">
+                    <label>💰 Starting Budget:</label>
+                    <input type="number" id="setup-budget" value="1000" min="100" step="50">
+                </div>
+                <div class="param-field">
+                    <label>🏷️ Minimum Bid:</label>
+                    <input type="number" id="setup-min-bid" value="20" min="5" step="5">
+                </div>
+                <div class="param-field">
+                    <label>👥 Min Squad Size:</label>
+                    <input type="number" id="setup-min-squad" value="9" min="1">
+                </div>
+                <div class="param-field">
+                    <label>👥 Max Squad Size:</label>
+                    <input type="number" id="setup-max-squad" value="15" min="1">
+                </div>
+            </div>
+
+            <div class="modal-actions">
+                <button class="btn btn-export" onclick="doSetupAuction()">Apply & Initialize Auction</button>
+                <button class="btn btn-reset" onclick="closeSetupModal()">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal: Confirm Reset -->
     <div class="modal-overlay" id="reset-modal">
         <div class="modal-box">
             <h3>⚠️ Reset Transfer Market?</h3>
@@ -72,30 +150,23 @@
     </div>
 
     <script>
+        // Initialize Socket.io connection & Audio
         const socket = io();
-
         const errorSound = new Audio("beep.mp3");
 
-        // -------- TEAM CONFIG --------
-        const BASE_PLAYER_PRICE = 20;
-        const teamNames = [
-            "Tiktok boyz",
-            "Disco boys",
-            "পারলে ঠেকাও",
-            "শূণ্য রান এক্সপ্রেস",
-            "আমরাই টপ আমরাই সব",
-            "Syndicate 404"
-        ];
-
+        // State variables
+        let BASE_PLAYER_PRICE = 20;
+        let auctionTitle = "";
+        let teamNames = [];
+        let playerList = [];
         let playerOwners = {};
-
-        const playerList = [
-            "Abdur Rahman Bhuiyan (Faysal)_11", "Abdullah Khubaib_10", "Abdullah Wasif_12", "Abu Sadat Ali Sabit_13", "Abu Talha Nowshad_12", "Abrar Rafi_10", "Abrar Tamim_09", "Aiman Noor_12", "Apon Mia_12", "Araf Ahmad_10", "Ashikur Rahman_10", "Ashraful Islam_10", "Atiqur Rahman_10", "Ayman Alam_08", "Azmaen Galib_12", "Badhon Rahman_10", "Enamul Haque Jewel_11", "Emtiaje_11", "Farhan Labib_08", "Fardeen Hassan_09", "Foyez Ahmed_13", "Foyzul Rijon_12", "Hafij_11", "Ibrahim khalil_08", "Illias Mahdi Adan_12", "Joyonto Sorkar_09", "Khan Mahmud Sunny_13", "Krishna Chandra Bagh_11", "Mahir Daiyan_12", "Md. Masum_08", "Md. Shurid_13", "Meharub Hossain Srijon_12", "Mehady Hasan_09", "Mehedi Hasan Jihad_09", "Mir Dider Ali Rakib_04", "Monjurul Imam Tonmoy_08", "Mubassir Rahman Alif_12", "Nasif Al Shahab_10", "Nazmus Saeid_11", "Nur e Alam Patwari_03", "Pranto Pall_10", "Rahat Hasan_07", "Rifat Tamim_12", "Rofik Islam_11", "Saad Chowdhury_12", "Sadman Sakib_12", "Samin Yeasir_13", "Sayed Ahmed Rahat_07", "Sazzad Hossain Hridoy_13", "Shahriar Nasib_11", "Shahriar Sajir_12", "Shawon_11", "Shihab_11", "Sifatuzzaman Sium_12", "Sudipto Mondol Mahin_12", "Tahsin Ahmed Tamim_11", "Tamim Bin Abdullah_09", "Tanzim Koushik_10", "Tasin Rahman_08", "Tarikul Islam_13", "Towhid Akram_08", "Zayed_08","Kabyo_12","Amit_12","Nabil_12","Morsalin_12"
-        ];
+        let uploadedMediaMap = {};
 
         const playersDiv = document.getElementById("players");
 
-        // -------- PARSE PLAYER NAME --------
+        /**
+         * Parses player string formatted as Name_BatchNo into name and badge label
+         */
         function parsePlayerName(name) {
             const parts = name.split('_');
             if (parts.length > 1) {
@@ -107,90 +178,121 @@
             return { displayName: name, badge: null };
         }
 
-        // Render all player rows
-        playerList.forEach((player, index) => {
-            const num = index + 1;
-            const safeId = player.replace(/[^a-zA-Z0-9]/g, '_');
-            const parsed = parsePlayerName(player);
-
-            let selectHTML = `<select id="team-${safeId}" aria-label="Select team for ${player}">`;
-            teamNames.forEach((team, ti) => {
-                selectHTML += `<option value="${ti}">${team}</option>`;
-            });
-            selectHTML += `</select>`;
-
-            const row = document.createElement("div");
-            row.className = "player-row";
-            row.id = `row-${safeId}`;
-            row.dataset.player = player;
-            row.dataset.index = index;
-
-            const badgeHTML = parsed.badge ? `<span class="player-badge">${parsed.badge}</span>` : "";
-
-            row.innerHTML = `
-                <span class="player-number">${num}</span>
-                <div class="player-name-wrapper">
-                    <span class="player-name">${parsed.displayName}</span>
-                    ${badgeHTML}
-                    <span class="player-owner"></span>
-                    <span class="player-original-cost"></span>
-                </div>
-                <span class="sold-badge">✔ BID</span>
-                <input
-                    type="number"
-                    id="bid-${safeId}"
-                    min="20"
-                    step="5"
-                    placeholder="Min 20"
-                    aria-label="Transfer bid amount for ${player}"
-                >
-                ${selectHTML}
-                <input
-                    type="number"
-                    id="sell-price-${safeId}"
-                    min="20"
-                    step="5"
-                    placeholder="Transfer price"
-                    aria-label="Transfer price for ${player}"
-                    disabled
-                >
-                <div class="action-buttons-group" style="display: flex; gap: 6px; flex-wrap: wrap;">
-                    <button class="submit-btn" id="submit-${safeId}" type="button">Bid</button>
-                    <button class="claim-btn" id="claim-${safeId}" type="button">Claim (0)</button>
-                    <button class="sell-btn" id="sell-${safeId}" type="button" disabled>Transfer</button>
-                    <button class="release-btn" id="release-${safeId}" type="button" disabled>Release</button>
-                </div>
-            `;
-
-            playersDiv.appendChild(row);
-            const submitBtn = row.querySelector('.submit-btn');
-            const claimBtn = row.querySelector('.claim-btn');
-            const sellBtn = row.querySelector('.sell-btn');
-            const releaseBtn = row.querySelector('.release-btn');
-            const bidInput = row.querySelector(`#bid-${safeId}`);
-            const sellPriceInput = row.querySelector(`#sell-price-${safeId}`);
-
-            if (bidInput) {
-                bidInput.addEventListener('keydown', event => {
-                    if (event.key === 'Enter') submitBid(player);
-                });
-            }
-            if (sellPriceInput) {
-                sellPriceInput.addEventListener('keydown', event => {
-                    if (event.key === 'Enter') sellPlayer(player);
-                });
-            }
-            if (submitBtn) submitBtn.addEventListener('click', () => submitBid(player));
-            if (claimBtn) claimBtn.addEventListener('click', () => freeClaim(player));
-            if (sellBtn) sellBtn.addEventListener('click', () => sellPlayer(player));
-            if (releaseBtn) releaseBtn.addEventListener('click', () => releasePlayer(player));
-        });
-
-        // -------- BID SUBMISSION --------
+        /**
+         * Sanitizes player string to create safe HTML element IDs
+         */
         function safeId(player) {
             return player.replace(/[^a-zA-Z0-9]/g, '_');
         }
 
+        /**
+         * Renders all player row controls dynamically based on active player list & team names
+         */
+        function renderPlayerRows() {
+            playersDiv.innerHTML = "";
+
+            // Show setup guidance card if no data is loaded yet
+            if (!playerList || playerList.length === 0 || !teamNames || teamNames.length === 0) {
+                playersDiv.innerHTML = `
+                    <div style="text-align: center; padding: 48px 24px; background: var(--bg-card); border-radius: var(--radius-lg); border: 1px dashed var(--border); margin: 20px 0;">
+                        <div style="font-size: 44px; margin-bottom: 12px;">⚙️</div>
+                        <h3 style="font-size: 20px; color: var(--neon-green); margin-bottom: 8px;">No Auction Data Configured</h3>
+                        <p style="color: var(--text-secondary); font-size: 14px; margin-bottom: 20px;">Please click the button below to set tournament title, upload <strong>players.txt</strong> and <strong>teams.txt</strong>, or configure auction parameters.</p>
+                        <button class="btn btn-export" onclick="openSetupModal()">⚙️ Open Setup & Import Modal</button>
+                    </div>
+                `;
+                document.getElementById('search-bar').placeholder = "Search by serial #";
+                document.getElementById('stat-sold').textContent = "0";
+                document.getElementById('stat-remaining').textContent = "0";
+                return;
+            }
+
+            playerList.forEach((player, index) => {
+                const num = index + 1;
+                const sId = safeId(player);
+                const parsed = parsePlayerName(player);
+
+                let selectHTML = `<select id="team-${sId}" aria-label="Select team for ${player}">`;
+                teamNames.forEach((team, ti) => {
+                    selectHTML += `<option value="${ti}">${team}</option>`;
+                });
+                selectHTML += `</select>`;
+
+                const row = document.createElement("div");
+                row.className = "player-row";
+                row.id = `row-${sId}`;
+                row.dataset.player = player;
+                row.dataset.index = index;
+
+                const badgeHTML = parsed.badge ? `<span class="player-badge">${parsed.badge}</span>` : "";
+                const mediaTag = uploadedMediaMap[num] ? `<span title="Media available" style="font-size:12px;">🎬</span>` : "";
+
+                row.innerHTML = `
+                    <span class="player-number">${num}</span>
+                    <div class="player-name-wrapper">
+                        <span class="player-name">${parsed.displayName}</span>
+                        ${badgeHTML}
+                        ${mediaTag}
+                        <span class="player-owner"></span>
+                        <span class="player-original-cost"></span>
+                    </div>
+                    <span class="sold-badge">✔ BID</span>
+                    <input
+                        type="number"
+                        id="bid-${sId}"
+                        min="${BASE_PLAYER_PRICE}"
+                        step="5"
+                        placeholder="Min ${BASE_PLAYER_PRICE}"
+                        aria-label="Transfer bid amount for ${player}"
+                    >
+                    ${selectHTML}
+                    <input
+                        type="number"
+                        id="sell-price-${sId}"
+                        min="${BASE_PLAYER_PRICE}"
+                        step="5"
+                        placeholder="Transfer price"
+                        aria-label="Transfer price for ${player}"
+                        disabled
+                    >
+                    <div class="action-buttons-group" style="display: flex; gap: 6px; flex-wrap: wrap;">
+                        <button class="submit-btn" id="submit-${sId}" type="button">Bid</button>
+                        <button class="claim-btn" id="claim-${sId}" type="button">Claim (0)</button>
+                        <button class="sell-btn" id="sell-${sId}" type="button" disabled>Transfer</button>
+                        <button class="release-btn" id="release-${sId}" type="button" disabled>Release</button>
+                    </div>
+                `;
+
+                playersDiv.appendChild(row);
+
+                const submitBtn = row.querySelector('.submit-btn');
+                const claimBtn = row.querySelector('.claim-btn');
+                const sellBtn = row.querySelector('.sell-btn');
+                const releaseBtn = row.querySelector('.release-btn');
+                const bidInput = row.querySelector(`#bid-${sId}`);
+                const sellPriceInput = row.querySelector(`#sell-price-${sId}`);
+
+                if (bidInput) {
+                    bidInput.addEventListener('keydown', event => {
+                        if (event.key === 'Enter') submitBid(player);
+                    });
+                }
+                if (sellPriceInput) {
+                    sellPriceInput.addEventListener('keydown', event => {
+                        if (event.key === 'Enter') sellPlayer(player);
+                    });
+                }
+                if (submitBtn) submitBtn.addEventListener('click', () => submitBid(player));
+                if (claimBtn) claimBtn.addEventListener('click', () => freeClaim(player));
+                if (sellBtn) sellBtn.addEventListener('click', () => sellPlayer(player));
+                if (releaseBtn) releaseBtn.addEventListener('click', () => releasePlayer(player));
+            });
+
+            document.getElementById('search-bar').placeholder = `Search by serial # (1-${playerList.length})`;
+            applyFilter();
+        }
+
+        // Action Handlers
         function submitBid(player) {
             const id = safeId(player);
             const bidInput = document.getElementById(`bid-${id}`);
@@ -204,14 +306,14 @@
                 return;
             }
 
-            socket.emit("bid", { player, bid, teamIndex });
+            socket.emit("bid", { player, bid, teamIndex, serial: playerList.indexOf(player) + 1 });
             bidInput.value = '';
         }
 
         function freeClaim(player) {
             const id = safeId(player);
             const teamIndex = document.getElementById(`team-${id}`).value;
-            socket.emit("free-claim", { player, teamIndex });
+            socket.emit("free-claim", { player, teamIndex, serial: playerList.indexOf(player) + 1 });
         }
 
         function sellPlayer(player) {
@@ -238,15 +340,47 @@
                 return;
             }
             if (!confirm(`Release ${player.split('_')[0]} back to free market? The team will be refunded their original bid.`)) return;
-            socket.emit("release-player", { player });
+            socket.emit("release-player", { player, serial: playerList.indexOf(player) + 1 });
         }
 
+        // Socket Event: Configuration Broadcast
+        socket.on("config-update", data => {
+            if (data.auctionTitle !== undefined) {
+                auctionTitle = data.auctionTitle;
+                const titleText = auctionTitle ? `${auctionTitle} — Admin Control` : "Tournament Auction Control";
+                document.getElementById('page-header-title').textContent = titleText;
+                document.getElementById('setup-title').value = auctionTitle;
+            }
+
+            if (data.auctionConfig) {
+                BASE_PLAYER_PRICE = data.auctionConfig.basePlayerPrice || 20;
+                document.getElementById('setup-budget').value = data.auctionConfig.baseTeamAmount || 1000;
+                document.getElementById('setup-min-bid').value = data.auctionConfig.basePlayerPrice || 20;
+                document.getElementById('setup-min-squad').value = data.auctionConfig.minPlayers || 9;
+                document.getElementById('setup-max-squad').value = data.auctionConfig.maxPlayers || 15;
+            }
+
+            if (Array.isArray(data.teamNames)) {
+                teamNames = data.teamNames;
+                document.getElementById('teams-text').value = teamNames.join('\n');
+                updateTeamsCountHint();
+            }
+
+            if (Array.isArray(data.playerList)) {
+                playerList = data.playerList;
+                document.getElementById('players-text').value = playerList.join('\n');
+                updatePlayersCountHint();
+            }
+
+            renderPlayerRows();
+        });
+
+        // Socket Event: Roster & Balance Update Broadcast
         socket.on("update", data => {
             const soldSet = new Set(data.soldPlayers || []);
             let soldCount = soldSet.size;
 
             playerOwners = {};
-            // Map player name => { teamName, originalBid }
             const playerDetails = {};
             if (data.teams && Array.isArray(data.teams)) {
                 data.teams.forEach(team => {
@@ -274,7 +408,7 @@
 
                 const ownerName = playerOwners[player] || '';
                 const details = playerDetails[player];
-                ownerLabel.textContent = ownerName ? `Owner: ${ownerName}` : '';
+                if (ownerLabel) ownerLabel.textContent = ownerName ? `Owner: ${ownerName}` : '';
                 row.dataset.owner = ownerName;
 
                 if (costLabel) {
@@ -285,26 +419,27 @@
                     }
                 }
 
-                const selectedTeamIndex = parseInt(selectEl.value, 10);
-                const isOwnTeamSelected = ownerName && ownerName === teamNames[selectedTeamIndex];
+                if (selectEl) {
+                    const selectedTeamIndex = parseInt(selectEl.value, 10);
+                    const isOwnTeamSelected = ownerName && ownerName === teamNames[selectedTeamIndex];
 
-                if (submitBtn) submitBtn.disabled = isSold;
-                if (claimBtn) claimBtn.disabled = isSold;
-                if (sellBtn) sellBtn.disabled = !isSold || isOwnTeamSelected;
-                if (releaseBtn) releaseBtn.disabled = !isSold;
-                if (bidInput) bidInput.disabled = isSold;
-                if (sellPriceInput) sellPriceInput.disabled = !isSold;
-                if (selectEl) selectEl.disabled = false;
+                    if (submitBtn) submitBtn.disabled = isSold;
+                    if (claimBtn) claimBtn.disabled = isSold;
+                    if (sellBtn) sellBtn.disabled = !isSold || isOwnTeamSelected;
+                    if (releaseBtn) releaseBtn.disabled = !isSold;
+                    if (bidInput) bidInput.disabled = isSold;
+                    if (sellPriceInput) sellPriceInput.disabled = !isSold;
+                    selectEl.disabled = false;
 
-                // Update sell/transfer button disabled state when team dropdown changes
-                if (selectEl && !selectEl._sellListenerAdded) {
-                    selectEl._sellListenerAdded = true;
-                    selectEl.addEventListener('change', () => {
-                        const selIdx = parseInt(selectEl.value, 10);
-                        const own = playerOwners[player] || '';
-                        const isOwn = own && own === teamNames[selIdx];
-                        if (sellBtn) sellBtn.disabled = !row.classList.contains('sold') || isOwn;
-                    });
+                    if (!selectEl._sellListenerAdded) {
+                        selectEl._sellListenerAdded = true;
+                        selectEl.addEventListener('change', () => {
+                            const selIdx = parseInt(selectEl.value, 10);
+                            const own = playerOwners[player] || '';
+                            const isOwn = own && own === teamNames[selIdx];
+                            if (sellBtn) sellBtn.disabled = !row.classList.contains('sold') || isOwn;
+                        });
+                    }
                 }
             });
 
@@ -314,7 +449,15 @@
             applyFilter();
         });
 
-        // -------- RESET MODAL --------
+        // Socket Event: Media Map Update Broadcast
+        socket.on("media-update", map => {
+            uploadedMediaMap = map || {};
+            const count = Object.keys(uploadedMediaMap).length;
+            document.getElementById('media-count-hint').textContent = `${count} profile media file(s) available on server`;
+            renderPlayerRows();
+        });
+
+        // Modal Controls
         function confirmReset() {
             document.getElementById('reset-modal').classList.add('active');
         }
@@ -328,15 +471,162 @@
             closeResetModal();
         }
 
-        function requestRollNumber() {
-            socket.emit("roll-number");
-        }
-
         function markCurrentNumberUnsold() {
             socket.emit("mark-unsold");
         }
 
-        // -------- SEARCH & FILTER --------
+        function openSetupModal() {
+            document.getElementById('setup-modal').classList.add('active');
+        }
+
+        function closeSetupModal() {
+            document.getElementById('setup-modal').classList.remove('active');
+        }
+
+        function updatePlayersCountHint() {
+            const lines = document.getElementById('players-text').value.split(/\r?\n/).map(s => s.trim()).filter(Boolean);
+            document.getElementById('players-count-hint').textContent = `${lines.length} players loaded`;
+        }
+
+        function updateTeamsCountHint() {
+            const lines = document.getElementById('teams-text').value.split(/\r?\n/).map(s => s.trim()).filter(Boolean);
+            document.getElementById('teams-count-hint').textContent = `${lines.length} teams loaded`;
+        }
+
+        document.getElementById('players-text').addEventListener('input', updatePlayersCountHint);
+        document.getElementById('teams-text').addEventListener('input', updateTeamsCountHint);
+
+        /**
+         * Sets up drag-and-drop file readers for text files
+         */
+        function setupFileDropzone(dropzoneId, fileInputId, textareaId, updateHintFn) {
+            const dropzone = document.getElementById(dropzoneId);
+            const fileInput = document.getElementById(fileInputId);
+            const textarea = document.getElementById(textareaId);
+
+            dropzone.addEventListener('click', () => fileInput.click());
+
+            fileInput.addEventListener('change', e => {
+                const file = e.target.files[0];
+                if (file) readFile(file);
+            });
+
+            dropzone.addEventListener('dragover', e => {
+                e.preventDefault();
+                dropzone.classList.add('dragover');
+            });
+
+            dropzone.addEventListener('dragleave', () => dropzone.classList.remove('dragover'));
+
+            dropzone.addEventListener('drop', e => {
+                e.preventDefault();
+                dropzone.classList.remove('dragover');
+                const file = e.dataTransfer.files[0];
+                if (file) readFile(file);
+            });
+
+            function readFile(file) {
+                const reader = new FileReader();
+                reader.onload = evt => {
+                    textarea.value = evt.target.result;
+                    updateHintFn();
+                    showToast(`Loaded ${file.name}`, 'info');
+                };
+                reader.readAsText(file);
+            }
+        }
+
+        setupFileDropzone('players-dropzone', 'players-file', 'players-text', updatePlayersCountHint);
+        setupFileDropzone('teams-dropzone', 'teams-file', 'teams-text', updateTeamsCountHint);
+
+        // Media Files Dropzone & Folder Upload Reader
+        const mediaDropzone = document.getElementById('media-dropzone');
+        const mediaInput = document.getElementById('media-files-input');
+
+        mediaDropzone.addEventListener('click', () => mediaInput.click());
+
+        mediaDropzone.addEventListener('dragover', e => {
+            e.preventDefault();
+            mediaDropzone.classList.add('dragover');
+        });
+
+        mediaDropzone.addEventListener('dragleave', () => mediaDropzone.classList.remove('dragover'));
+
+        mediaDropzone.addEventListener('drop', e => {
+            e.preventDefault();
+            mediaDropzone.classList.remove('dragover');
+            if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+                uploadMediaFiles(e.dataTransfer.files);
+            }
+        });
+
+        mediaInput.addEventListener('change', e => {
+            if (e.target.files && e.target.files.length > 0) {
+                uploadMediaFiles(e.target.files);
+            }
+        });
+
+        function uploadMediaFiles(fileList) {
+            const files = Array.from(fileList);
+            if (files.length === 0) return;
+
+            showToast(`Uploading ${files.length} media file(s)...`, 'info');
+
+            let processed = 0;
+            const payload = [];
+
+            files.forEach(file => {
+                const reader = new FileReader();
+                reader.onload = evt => {
+                    payload.push({
+                        filename: file.name,
+                        buffer: evt.target.result
+                    });
+                    processed++;
+                    if (processed === files.length) {
+                        socket.emit('upload-media-batch', payload);
+                    }
+                };
+                reader.readAsArrayBuffer(file);
+            });
+        }
+
+        /**
+         * Submits setup and file data to server
+         */
+        function doSetupAuction() {
+            const titleInput = document.getElementById('setup-title').value.trim();
+            const parsedPlayers = document.getElementById('players-text').value.split(/\r?\n/).map(s => s.trim()).filter(Boolean);
+            const parsedTeams = document.getElementById('teams-text').value.split(/\r?\n/).map(s => s.trim()).filter(Boolean);
+
+            if (parsedPlayers.length === 0) {
+                showMsg("Please enter or import at least 1 player.", "error");
+                return;
+            }
+
+            if (parsedTeams.length === 0) {
+                showMsg("Please enter or import at least 1 team.", "error");
+                return;
+            }
+
+            const config = {
+                baseTeamAmount: parseInt(document.getElementById('setup-budget').value, 10) || 1000,
+                basePlayerPrice: parseInt(document.getElementById('setup-min-bid').value, 10) || 20,
+                minPlayers: parseInt(document.getElementById('setup-min-squad').value, 10) || 9,
+                maxPlayers: parseInt(document.getElementById('setup-max-squad').value, 10) || 15
+            };
+
+            socket.emit('setup-auction', {
+                title: titleInput,
+                playerList: parsedPlayers,
+                teamNames: parsedTeams,
+                config
+            });
+
+            closeSetupModal();
+        }
+
+        // Search & Filter
         let currentFilter = 'all';
 
         document.getElementById('search-bar').addEventListener('input', applyFilter);
@@ -366,7 +656,7 @@
             });
         }
 
-        // -------- SOCKET EVENTS --------
+        // UI Toast & Message Box Helpers
         socket.on("message", data => {
             showMsg(data.text, data.type);
             showToast(data.text, data.type);
@@ -374,7 +664,6 @@
             if (data.type === "error") errorSound.play().catch(() => { });
         });
 
-        // -------- UI HELPERS --------
         function showMsg(text, type) {
             const box = document.getElementById("msg-box");
             box.textContent = text;
@@ -390,9 +679,12 @@
             setTimeout(() => toast.remove(), 3000);
         }
 
-        // Close modal on overlay click
+        // Close modals when clicking background overlay
         document.getElementById('reset-modal').addEventListener('click', e => {
             if (e.target === e.currentTarget) closeResetModal();
+        });
+        document.getElementById('setup-modal').addEventListener('click', e => {
+            if (e.target === e.currentTarget) closeSetupModal();
         });
     </script>
 </body>

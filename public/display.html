@@ -4,18 +4,18 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Live Auction Display — NFL 2026</title>
-    <meta name="description" content="Live football auction display for NPL Season 05. Real-time transfer budgets, squads, and bidding updates.">
+    <title>Live Auction Display</title>
+    <meta name="description" content="Live football auction display. Real-time transfer budgets, squads, and bidding updates.">
     <link rel="stylesheet" href="style.css">
     <script src="/socket.io/socket.io.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
 </head>
 <body>
 
-    <!-- Toast Container -->
+    <!-- Toast Notifications Container -->
     <div class="toast-container" id="toast-container"></div>
 
-    <!-- Celebration Overlay -->
+    <!-- Celebration Overlay Modal -->
     <div class="celebration-overlay" id="celebration-overlay">
         <div class="celebration-card">
             <div class="celebration-title">⚽ NEW BIDDING 📝</div>
@@ -28,11 +28,10 @@
         </div>
     </div>
 
-    <!-- Display Header -->
+    <!-- Page Header -->
     <header class="display-header" id="display-header">
-        <!-- <img src="logo.png" alt="NPL Logo" class="logo"> -->
         <div class="display-header-center">
-            <h1>Nuclear Night Short-pitch Season-02 - Auction Display</h1>
+            <h1 id="page-header-title">Live Auction Display</h1>
         </div>
         <div class="display-header-actions">
             <div class="stat-chip" title="Total players bid">
@@ -45,7 +44,7 @@
     <!-- Developer Credit -->
     <div class="developer-credit-corner">© Developed by ABRAR1552</div>
 
-    <!-- Summary Row -->
+    <!-- Activity Banner & Random Serial Display -->
     <div class="display-summary-row">
         <div class="sold-banner" id="msg-box">
             Waiting for transfer activity to begin…
@@ -57,30 +56,32 @@
         </div>
     </div>
 
-    <!-- Teams Grid -->
+    <!-- Teams Roster Grid Container -->
     <div id="teams-container"></div>
 
-    <!-- Auction stats footer -->
+    <!-- Bottom Statistics Bar -->
     <div class="stats-bar">
-        <div class="stat-chip">Total Start Budget: <span class="stat-val">6,000</span></div>
-        <div class="stat-chip">Net Spent: <span class="stat-val" id="total-spent">0</span></div>
-        <div class="stat-chip">Total Balance: <span class="stat-val" id="total-remaining">5,000</span></div>
+        <div class="stat-chip">Total Start Budget: <span class="stat-val" id="total-start-budget">—</span></div>
+        <div class="stat-chip">Net Spent: <span class="stat-val" id="total-spent">—</span></div>
+        <div class="stat-chip">Total Balance: <span class="stat-val" id="total-remaining">—</span></div>
     </div>
 
     <script>
+        // Initialize Socket connection
         const socket = io();
         const container = document.getElementById("teams-container");
 
-        const BASE_PLAYER_PRICE = 20;
-        const MIN_PLAYERS = 9;
-        const BASE_TEAM_AMOUNT = 1000;
+        // Active Configuration Defaults
+        let BASE_PLAYER_PRICE = 20;
+        let MIN_PLAYERS = 9;
+        let BASE_TEAM_AMOUNT = 1000;
+        let currentTeams = [];
 
         const errorSound = new Audio("beep.mp3");
 
-        // Team custom soccer crests
-        const TEAM_CRESTS = ["⚡", "🛡️", "🔥", "💥", "🤝", "🌟"];
-
-        // -------- PARSE PLAYER NAME --------
+        /**
+         * Parses player string formatted as Name_BatchNo into display name and badge string
+         */
         function parsePlayerName(name) {
             const parts = name.split('_');
             if (parts.length > 1) {
@@ -92,12 +93,32 @@
             return { displayName: name, badge: null };
         }
 
-        // -------- RENDER TEAMS --------
+        /**
+         * Renders team roster boxes, budget cards, and progress bars dynamically
+         */
         function renderTeams(teams) {
+            currentTeams = teams;
             container.innerHTML = "";
 
-            // totalSpent = sum of all player bids currently in rosters
-            // totalBalance = sum of all current team balances
+            // Display welcome prompt if no teams are configured yet
+            if (!teams || teams.length === 0) {
+                container.style.gridTemplateColumns = "1fr";
+                container.innerHTML = `
+                    <div style="grid-column: 1 / -1; text-align: center; padding: 60px 24px; background: var(--bg-card); border-radius: var(--radius-lg); border: 1px dashed var(--border);">
+                        <div style="font-size: 54px; margin-bottom: 16px;">🏆</div>
+                        <h2 style="font-size: 24px; color: var(--neon-green); margin-bottom: 8px;">Welcome to Live Auction Display</h2>
+                        <p style="color: var(--text-secondary); font-size: 15px;">Waiting for admin to configure tournament title, teams, and player list via Admin Control Panel…</p>
+                    </div>
+                `;
+                document.getElementById('total-sold').textContent = "0";
+                document.getElementById('total-start-budget').textContent = "—";
+                document.getElementById('total-spent').textContent = "—";
+                document.getElementById('total-remaining').textContent = "—";
+                return;
+            }
+
+            container.style.gridTemplateColumns = `repeat(${Math.min(teams.length, 6)}, 1fr)`;
+
             let totalBalance = 0;
 
             teams.forEach((team, idx) => {
@@ -111,7 +132,6 @@
                 }
                 if (maxBid < BASE_PLAYER_PRICE) maxBid = 0;
 
-                // Net spent = original budget minus current balance
                 totalBalance += team.balance;
 
                 const progress = Math.min((currentPlayers / MIN_PLAYERS) * 100, 100);
@@ -130,12 +150,11 @@
                 }).join("");
 
                 const div = document.createElement("div");
-                div.className = `team-box team-box-${idx}`;
+                div.className = `team-box team-box-${idx % 6}`;
                 div.id = `team-box-${idx}`;
 
-                const crest = TEAM_CRESTS[idx] || "⚽";
                 div.innerHTML = `
-                    <h2>${crest} ${team.name}</h2>
+                    <h2>${team.name}</h2>
                     <div class="team-meta">
                         <div>
                             <span class="team-balance-label">Transfer Budget</span>
@@ -165,19 +184,23 @@
                 container.appendChild(div);
             });
 
-            const totalNetSpent = BASE_TEAM_AMOUNT * teams.length - totalBalance;
+            // Update stats bar
+            const totalStartBudget = BASE_TEAM_AMOUNT * teams.length;
+            const totalNetSpent = totalStartBudget - totalBalance;
 
             document.getElementById('total-sold').textContent = teams.reduce((a, t) => a + t.players.length, 0);
-            document.getElementById('total-spent').textContent = totalNetSpent >= 0 ? totalNetSpent : `+${Math.abs(totalNetSpent)} gained`;
-            document.getElementById('total-remaining').textContent = totalBalance;
+            document.getElementById('total-start-budget').textContent = totalStartBudget.toLocaleString();
+            document.getElementById('total-spent').textContent = totalNetSpent >= 0 ? totalNetSpent.toLocaleString() : `+${Math.abs(totalNetSpent).toLocaleString()} gained`;
+            document.getElementById('total-remaining').textContent = totalBalance.toLocaleString();
         }
 
-        // -------- PLAY REFEREE WHISTLE SOUND --------
+        /**
+         * Synthesizes a referee double-whistle sound effect using Web Audio API
+         */
         function playWhistleSound() {
             try {
                 const ctx = new (window.AudioContext || window.webkitAudioContext)();
                 
-                // Trill / Whistle trill effect requires 2 oscillators detuned
                 const osc1 = ctx.createOscillator();
                 const osc2 = ctx.createOscillator();
                 const gainNode = ctx.createGain();
@@ -190,11 +213,10 @@
                 osc2.frequency.setValueAtTime(2020, ctx.currentTime);
                 osc2.frequency.linearRampToValueAtTime(2220, ctx.currentTime + 0.15);
                 
-                // Low Frequency Oscillator for trill modulation
                 const lfo = ctx.createOscillator();
                 const lfoGain = ctx.createGain();
-                lfo.frequency.value = 35; // 35 Hz trill
-                lfoGain.gain.value = 40;  // depth of pitch fluctuation
+                lfo.frequency.value = 35;
+                lfoGain.gain.value = 40;
                 
                 lfo.connect(lfoGain);
                 lfoGain.connect(osc1.frequency);
@@ -202,7 +224,6 @@
                 
                 gainNode.gain.setValueAtTime(0, ctx.currentTime);
                 gainNode.gain.linearRampToValueAtTime(0.25, ctx.currentTime + 0.04);
-                // Double blast whistle pattern
                 gainNode.gain.setValueAtTime(0.25, ctx.currentTime + 0.18);
                 gainNode.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.35);
                 
@@ -222,7 +243,9 @@
             }
         }
 
-        // -------- CONFETTI CELEBRATION --------
+        /**
+         * Generates dynamic confetti particle animation
+         */
         function launchConfetti() {
             const colors = ['#00ff88', '#f1c40f', '#ffffff', '#00f0ff', '#bd00ff', '#ff3333'];
             for (let i = 0; i < 75; i++) {
@@ -242,7 +265,9 @@
             }
         }
 
-        // -------- TRIGGER CELEBRATION --------
+        /**
+         * Triggers full-screen celebratory modal on successful bid or transfer
+         */
         function triggerBiddingCelebration(playerName, teamName, amount, isTransfer = false) {
             const overlay = document.getElementById('celebration-overlay');
             const titleEl = overlay.querySelector('.celebration-title');
@@ -290,13 +315,29 @@
             }, 3800);
         }
 
-        // -------- SOCKET EVENTS --------
+        // Socket Listeners
+        socket.on("config-update", data => {
+            if (data.auctionTitle !== undefined) {
+                const titleText = data.auctionTitle ? `${data.auctionTitle} — Auction Display` : "Live Auction Display";
+                document.getElementById('page-header-title').textContent = titleText;
+            }
+
+            if (data.auctionConfig) {
+                BASE_PLAYER_PRICE = data.auctionConfig.basePlayerPrice || 20;
+                MIN_PLAYERS = data.auctionConfig.minPlayers || 9;
+                BASE_TEAM_AMOUNT = data.auctionConfig.baseTeamAmount || 1000;
+            }
+            if (currentTeams.length > 0) {
+                renderTeams(currentTeams);
+            }
+        });
+
         socket.on("update", data => {
             renderTeams(data.teams);
         });
 
-        socket.on("roll-number", () => {
-            rollRandomNumber();
+        socket.on("number-update", data => {
+            showRandomNumber(data.number, data.phase === 'skipped');
         });
 
         socket.on("message", data => {
@@ -309,10 +350,6 @@
             if (data.type === "error") {
                 errorSound.play().catch(() => {});
             } else if (data.type === "success") {
-                // Parse bidding message details
-                // e.g. "⚽ MD Ilia's mahdi adan_12 signed by Plasma Blasters for 65! 📝"
-                // or "⚽ Md. Meharub Hossain_12 drafted for FREE by Neutron Stikers! 📝"
-                // or "🔄 PlayerName transferred from TeamA to TeamB for 80! (Profit: +20) 📝"
                 const text = data.text;
                 const bidMatch = text.match(/⚽ (.*) (?:signed|bid) by (.*) for (\d+)! 📝/);
                 const freeMatch = text.match(/⚽ (.*) drafted for FREE by (.*)! 📝/);
@@ -326,25 +363,24 @@
                     triggerBiddingCelebration(transferMatch[1], transferMatch[2], transferMatch[3], true);
                 }
 
-                // Roll a new random number after every successful bid
-                rollRandomNumber();
             }
         });
 
-        // -------- EXPORT PDF --------
+        /**
+         * Generates and downloads PDF of current auction rosters
+         */
         function exportPDF() {
             const header = document.getElementById('display-header');
             const downloadBtn = document.getElementById('download-btn');
             const toastContainer = document.getElementById('toast-container');
 
-            // Temporarily hide UI-only elements
             header.style.display = 'none';
             downloadBtn.style.display = 'none';
             toastContainer.style.display = 'none';
 
             const options = {
                 margin: 8,
-                filename: `NPL_Season05_Auction_${new Date().toISOString().split('T')[0]}.pdf`,
+                filename: `Auction_Display_${new Date().toISOString().split('T')[0]}.pdf`,
                 image: { type: 'jpeg', quality: 0.98 },
                 html2canvas: { scale: 2, backgroundColor: '#05140b' },
                 jsPDF: { unit: 'mm', format: 'a3', orientation: 'landscape' }
@@ -358,7 +394,6 @@
             });
         }
 
-        // -------- TOAST --------
         function showToast(text, type) {
             const container = document.getElementById('toast-container');
             const toast = document.createElement('div');
@@ -368,53 +403,13 @@
             setTimeout(() => toast.remove(), 3000);
         }
 
-        // -------- RANDOM NUMBER (1–62) WITH UNSOLD TRACKING --------
-        let remainingNumbers = Array.from({ length: 62 }, (_, i) => i + 1);
-        let unsoldNumbers = [];
-        let currentDisplayedNumber = null;
-
-        function shuffleNumbers(array) {
-            const copy = [...array];
-            for (let i = copy.length - 1; i > 0; i--) {
-                const j = Math.floor(Math.random() * (i + 1));
-                [copy[i], copy[j]] = [copy[j], copy[i]];
-            }
-            return copy;
-        }
-
-        function getNextUniqueNumber() {
-            if (remainingNumbers.length === 0) {
-                // All main numbers drawn, now show unsold numbers
-                if (unsoldNumbers.length > 0) {
-                    const shuffled = shuffleNumbers(unsoldNumbers);
-                    const nextNumber = shuffled.pop();
-                    unsoldNumbers = shuffled;
-                    return { number: nextNumber, isUnsold: true };
-                }
-                return null;
-            }
-
-            const shuffled = shuffleNumbers(remainingNumbers);
-            const nextNumber = shuffled.pop();
-            remainingNumbers = shuffled;
-            return { number: nextNumber, isUnsold: false };
-        }
-
-        function rollRandomNumber() {
+        function showRandomNumber(number, isUnsold) {
             const el = document.getElementById('random-number-value');
-            const result = getNextUniqueNumber();
-            
-            if (result) {
-                currentDisplayedNumber = result.number;
-            }
-            
-            // Brief flash animation
             el.classList.add('rolling');
             setTimeout(() => {
-                if (result) {
-                    const display = result.isUnsold ? `⚪ ${result.number}` : result.number;
-                    el.textContent = display;
-                    el.style.color = result.isUnsold ? '#f1c40f' : 'var(--neon-green)';
+                if (number !== null && number !== undefined) {
+                    el.textContent = isUnsold ? `⚪ ${number}` : number;
+                    el.style.color = isUnsold ? '#f1c40f' : 'var(--neon-green)';
                 } else {
                     el.textContent = 'All Done! ✅';
                     el.style.color = 'var(--neon-green)';
@@ -423,20 +418,6 @@
             }, 150);
         }
 
-        // -------- SOCKET: MARK CURRENT NUMBER AS UNSOLD --------
-        socket.on('mark-unsold', () => {
-            if (currentDisplayedNumber !== null) {
-                // Move current number from remaining to unsold
-                unsoldNumbers.push(currentDisplayedNumber);
-                currentDisplayedNumber = null;
-                showToast(`Number marked as unsold. Remaining: ${remainingNumbers.length}`, 'info');
-                // Draw next number
-                rollRandomNumber();
-            }
-        });
-
-        // Roll on page load
-        rollRandomNumber();
     </script>
 
 </body>

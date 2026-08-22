@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Player Profile Stage — Live Auction</title>
+    <meta name="description" content="Live real-time player profile media stage showing images and videos by serial number.">
+    <link rel="stylesheet" href="style.css">
+    <script src="/socket.io/socket.io.js"></script>
+</head>
+
+<body>
+
+    <div class="toast-container" id="toast-container"></div>
+
+    <!-- Page Header -->
+    <header class="display-header" id="display-header">
+        <div class="display-header-center">
+            <h1 id="page-header-title">Player Profile Stage</h1>
+        </div>
+        <div class="display-header-actions">
+            <a href="/display.html" class="btn btn-reset" style="text-decoration:none;">📊 Roster Display</a>
+            <a href="/admin.html" class="btn btn-export" style="text-decoration:none;">⚙️ Admin Panel</a>
+        </div>
+    </header>
+
+    <div class="developer-credit-corner">© Developed by ABRAR1552</div>
+
+    <!-- Live Status Banner -->
+    <div class="display-summary-row" style="margin-bottom: 16px;">
+        <div class="sold-banner" id="msg-box">
+            Waiting for serial number selection…
+        </div>
+
+        <div class="random-number-container" id="random-number-container">
+            <div class="random-number-label">🎲 Active Serial</div>
+            <div class="random-number-value" id="random-number-value">—</div>
+        </div>
+    </div>
+
+    <!-- Main Player Profile Stage Container -->
+    <div class="profile-stage-container" id="profile-stage">
+        <div class="profile-stage-card" id="profile-card">
+            <div class="profile-header-info">
+                <span class="profile-serial-chip" id="profile-serial-badge">Serial #—</span>
+                <span class="profile-status-badge" id="profile-status-badge">Available</span>
+            </div>
+
+            <div class="profile-media-wrapper" id="profile-media-wrapper">
+                <div class="profile-placeholder" id="profile-placeholder">
+                    <span class="profile-placeholder-icon">👕</span>
+                    <p>No profile media uploaded for this serial</p>
+                </div>
+            </div>
+
+            <div class="profile-player-info">
+                <h2 class="profile-player-name" id="profile-player-name">Select Player Serial</h2>
+                <div class="profile-owner-info" id="profile-owner-info"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const socket = io();
+
+        let auctionTitle = "";
+        let playerList = [];
+        let teamNames = [];
+        let teams = [];
+        let soldPlayers = new Set();
+        let currentNumber = null;
+        let mediaMap = {};
+
+        function parsePlayerName(name) {
+            if (!name) return { displayName: "—", badge: null };
+            const parts = name.split('_');
+            if (parts.length > 1) {
+                return {
+                    displayName: parts[0].trim(),
+                    badge: parts.slice(1).join('_').trim()
+                };
+            }
+            return { displayName: name, badge: null };
+        }
+
+        function updateProfileStage() {
+            const card = document.getElementById('profile-card');
+            const serialBadge = document.getElementById('profile-serial-badge');
+            const statusBadge = document.getElementById('profile-status-badge');
+            const nameEl = document.getElementById('profile-player-name');
+            const ownerEl = document.getElementById('profile-owner-info');
+            const mediaWrapper = document.getElementById('profile-media-wrapper');
+            const numberVal = document.getElementById('random-number-value');
+
+            card.classList.add('transitioning');
+
+            setTimeout(() => {
+                if (currentNumber === null || currentNumber === undefined || currentNumber <= 0 || playerList.length === 0) {
+                    numberVal.textContent = "—";
+                    serialBadge.textContent = "Serial #—";
+                    statusBadge.textContent = "Waiting";
+                    statusBadge.className = "profile-status-badge";
+                    nameEl.textContent = playerList.length === 0 ? "No Players Loaded" : "Draw a Serial Number";
+                    ownerEl.innerHTML = "";
+                    mediaWrapper.innerHTML = `
+                        <div class="profile-placeholder">
+                            <span class="profile-placeholder-icon">🏆</span>
+                            <p>Waiting for serial draw in Admin Panel…</p>
+                        </div>
+                    `;
+                    card.classList.remove('transitioning');
+                    return;
+                }
+
+                numberVal.textContent = currentNumber;
+                serialBadge.textContent = `Serial #${currentNumber}`;
+
+                const rawPlayer = playerList[currentNumber - 1];
+                const parsed = parsePlayerName(rawPlayer);
+
+                const badgeHTML = parsed.badge ? `<span class="player-badge">${parsed.badge}</span>` : "";
+                nameEl.innerHTML = `${parsed.displayName} ${badgeHTML}`;
+
+                // Check ownership status
+                let ownerTeam = null;
+                let playerBid = 0;
+
+                teams.forEach(t => {
+                    t.players.forEach(p => {
+                        if (p.name === rawPlayer) {
+                            ownerTeam = t.name;
+                            playerBid = p.bid;
+                        }
+                    });
+                });
+
+                if (ownerTeam) {
+                    statusBadge.textContent = "SOLD / SIGNED";
+                    statusBadge.className = "profile-status-badge status-sold";
+                    ownerEl.innerHTML = `Signed by <strong>${ownerTeam}</strong> for 💰 ${playerBid === 0 ? 'FREE' : playerBid}`;
+                } else if (soldPlayers.has(rawPlayer)) {
+                    statusBadge.textContent = "ACQUIRED";
+                    statusBadge.className = "profile-status-badge status-sold";
+                    ownerEl.innerHTML = `Player acquired`;
+                } else {
+                    statusBadge.textContent = "AVAILABLE FOR BIDDING";
+                    statusBadge.className = "profile-status-badge status-available";
+                    ownerEl.innerHTML = `Ready for Transfer Bids`;
+                }
+
+                // Check Media Map for currentNumber
+                const media = mediaMap[currentNumber];
+                if (media && media.url) {
+                    if (media.type === 'video') {
+                        mediaWrapper.innerHTML = `
+                            <video class="profile-media-element" autoplay loop muted playsinline src="${media.url}"></video>
+                        `;
+                    } else {
+                        mediaWrapper.innerHTML = `
+                            <img class="profile-media-element" src="${media.url}" alt="${parsed.displayName}">
+                        `;
+                    }
+                } else {
+                    mediaWrapper.innerHTML = `
+                        <div class="profile-placeholder">
+                            <span class="profile-placeholder-icon">👕</span>
+                            <p>No image/video uploaded for Serial #${currentNumber}</p>
+                            <span style="font-size:11px; color:var(--text-muted);">Upload <strong>${currentNumber}.png</strong> or <strong>${currentNumber}.mp4</strong> via Admin Panel</span>
+                        </div>
+                    `;
+                }
+
+                card.classList.remove('transitioning');
+            }, 150);
+        }
+
+        // Socket Event Listeners
+        socket.on("config-update", data => {
+            if (data.auctionTitle !== undefined) {
+                auctionTitle = data.auctionTitle;
+                const titleText = auctionTitle ? `${auctionTitle} — Player Profile` : "Player Profile Stage";
+                document.getElementById('page-header-title').textContent = titleText;
+            }
+
+            if (Array.isArray(data.playerList)) {
+                playerList = data.playerList;
+            }
+            if (Array.isArray(data.teamNames)) {
+                teamNames = data.teamNames;
+            }
+
+            updateProfileStage();
+        });
+
+        socket.on("update", data => {
+            teams = data.teams || [];
+            soldPlayers = new Set(data.soldPlayers || []);
+            updateProfileStage();
+        });
+
+        socket.on("media-update", map => {
+            mediaMap = map || {};
+            updateProfileStage();
+        });
+
+        socket.on("number-update", data => {
+            currentNumber = data.number;
+            updateProfileStage();
+        });
+
+        socket.on("message", data => {
+            const box = document.getElementById("msg-box");
+            box.textContent = data.text;
+            box.className = `sold-banner ${data.type || ''}`;
+            showToast(data.text, data.type);
+        });
+
+        function showToast(text, type) {
+            const container = document.getElementById('toast-container');
+            const toast = document.createElement('div');
+            toast.className = `toast ${type || ''}`;
+            toast.textContent = text;
+            container.appendChild(toast);
+            setTimeout(() => toast.remove(), 3000);
+        }
+    </script>
+</body>
+
+</html>
