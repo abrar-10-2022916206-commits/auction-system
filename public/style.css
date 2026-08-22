@@ -1026,6 +1026,9 @@ h1 {
 .modal-box-large {
     max-width: 820px;
     width: 95%;
+    max-height: calc(100vh - 32px);
+    overflow-y: auto;
+    overscroll-behavior: contain;
 }
 
 .setup-grid {
