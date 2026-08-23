@@ -11,25 +11,12 @@ const os = require('os');
 const socketIO = require('socket.io');
 const fs = require('fs');
 const path = require('path');
-require('dotenv').config();
-const mongoose = require('mongoose');
-const Tournament = require('./models/Tournaments');
 
 const app = express();
 const server = http.createServer(app);
 const io = socketIO(server, {
     maxHttpBufferSize: 1e8 // 100 MB buffer limit for media uploads
 });
-app.use(express.json());
-
-const mongoUri = process.env.MONGO_URI;
-if (mongoUri && mongoUri !== 'your_mongodb_connection_string') {
-    mongoose.connect(mongoUri)
-        .then(() => console.log('MongoDB connected'))
-        .catch(error => console.error('MongoDB connection failed:', error.message));
-} else {
-    console.error('MONGO_URI is not configured. Tournament registration is disabled.');
-}
 
 // Serve static assets
 app.use(express.static('public'));
@@ -534,50 +521,4 @@ server.listen(PORT, HOST, () => {
     console.log(`   Admin Panel   : http://${lanIp}:${PORT}/admin.html`);
     console.log(`   Live Display  : http://${lanIp}:${PORT}/display.html`);
     console.log(`   Player Profile: http://${lanIp}:${PORT}/playerProfileShowing.html`);
-});
-
-// Register / Setup API Route
-app.post('/api/tournament/setup', async (req, res) => {
-  try {
-        if (mongoose.connection.readyState !== 1) {
-            return res.status(503).json({
-                success: false,
-                message: "Database is not connected. Set a valid MONGO_URI in .env and restart the server."
-            });
-        }
-
-    const { tournamentCode, adminUsername, adminPassword, title } = req.body;
-
-    // চেক করা এই টুর্নামেন্ট কোড ডাটাবেজে আগে থেকে আছে কি না
-    let existingTournament = await Tournament.findOne({ tournamentCode });
-
-    if (existingTournament) {
-      // যদি থাকে এবং পাসওয়ার্ড মেলে, তবে লগইন করতে দেওয়া
-      if (existingTournament.adminPassword === adminPassword) {
-        return res.json({ success: true, message: "Tournament loaded successfully!" });
-      } else {
-        return res.status(400).json({ 
-          success: false, 
-          message: "এই Tournament Code টি আগেই রেজিস্ট্রেশন করা হয়েছে। অন্য কোড দিন বা সঠিক পাসওয়ার্ড ব্যবহার করুন।" 
-        });
-      }
-    }
-
-    // নতুন টুর্নামেন্ট রেজিস্ট্রেশন
-    const newTournament = new Tournament({
-      tournamentCode,
-      adminUsername,
-      adminPassword,
-      title,
-      teams: [],
-      players: []
-    });
-
-    await newTournament.save();
-    res.json({ success: true, message: "Registration successful!" });
-
-  } catch (error) {
-    console.error("Setup Error:", error);
-    res.status(500).json({ success: false, message: "Internal Server Error" });
-  }
 });

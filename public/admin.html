@@ -90,7 +90,7 @@
 
                 <!-- Import Teams Column -->
                 <div class="setup-col">
-                    <label class="setup-label">🛡️ Import Teams (teams.txt)</label>
+                    <label class="setup-label">Import Teams (teams.txt)</label>
                     <div class="file-dropzone" id="teams-dropzone">
                         <span>📁 Click or drag teams.txt file</span>
                         <input type="file" id="teams-file" accept=".txt" style="display:none;">
@@ -698,53 +698,6 @@
         document.getElementById('setup-modal').addEventListener('click', e => {
             if (e.target === e.currentTarget) closeSetupModal();
         });
-
-        // // অ্যাডমিন যে টুর্নামেন্ট সেটআপ বা সিলেক্ট করবেন তার কোড
-        // // (এটি ইনপুট বক্স থেকেও নিতে পারেন)
-        // let tournamentCode = "NPL-S05";
-
-        // // অ্যাডমিন রুমে জয়েন করা
-        // socket.emit('joinRoom', tournamentCode);
-
-        // // ১. প্লেয়ার ট্রান্সফার বাটন ক্লিকের কোড
-        // function transferPlayerToDisplay(playerData) {
-        //     socket.emit('transferPlayer', {
-        //         tournamentCode: tournamentCode,
-        //         playerData: playerData // যেমন: { name: 'Player A', mediaUrl: '...', mediaType: 'image' }
-        //     });
-        // }
-
-        // // ২. লাইভ বিড আপডেট করার কোড
-        // function updateBid(bidAmount, teamName) {
-        //     socket.emit('placeBid', {
-        //         tournamentCode: tournamentCode,
-        //         bidData: { amount: bidAmount, teamName: teamName }
-        //     });
-        // }
-
-
-
-        // Registration & Admin Panel Access
-        // ১. URL প্যারামিটার থেকে টুর্নামেন্ট কোড নেওয়া (e.g. admin.html?code=NPL-S05)
-        const urlParams = new URLSearchParams(window.location.search);
-        const tournamentCode = urlParams.get('code');
-
-        if (!tournamentCode) {
-            alert("কোনো টুর্নামেন্ট কোড পাওয়া যায়নি! দয়া করে আগে রেজিস্ট্রেশন করুন।");
-            window.location.href = '/reg.html'; // কোড না থাকলে রেজিস্ট্রেশন পেজে পাঠিয়ে দেবে
-        } else {
-            // ২. ওই টুর্নামেন্টের ডেডিকেটেড Socket রুম-এ কানেক্ট করা
-            socket.emit('joinRoom', tournamentCode);
-            console.log(`Admin joined dedicated tournament room: ${tournamentCode}`);
-        }
-
-        // ৩. প্লেয়ার ডিসপ্লেতে ট্রান্সফার করার ফাংশন
-        function transferPlayerToDisplay(playerData) {
-            socket.emit('transferPlayer', {
-                tournamentCode: tournamentCode,
-                playerData: playerData
-            });
-        }
     </script>
 </body>
 

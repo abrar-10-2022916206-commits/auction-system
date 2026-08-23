@@ -9,7 +9,6 @@
         content="Live football auction display. Real-time transfer budgets, squads, and bidding updates.">
     <link rel="stylesheet" href="style.css">
     <script src="/socket.io/socket.io.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
 </head>
 
 <body>
@@ -421,42 +420,6 @@
                 el.classList.remove('rolling');
             }, 150);
         }
-
-        // URL থেকে টুর্নামেন্ট কোড নেওয়া (যেমন: display.html?code=NPL-S05)
-        const urlParams = new URLSearchParams(window.location.search);
-        const tournamentCode = urlParams.get('code');
-
-        if (tournamentCode) {
-            socket.emit('joinRoom', tournamentCode);
-        } else {
-            console.warn("URL-এ কোনো টুর্নামেন্ট কোড নেই!");
-        }
-
-        // অ্যাডমিন প্লেয়ার পাঠালে স্ক্রিনের তথ্য আপডেট করা
-        socket.on('updateDisplay', (playerData) => {
-            // আপনার HTML আইডি অনুযায়ী এগুলো পরিবর্তন করতে পারেন
-            const nameElem = document.getElementById('playerName');
-            if (nameElem) nameElem.innerText = playerData.name;
-
-            // মিডিয়া (ছবি/ভিডিও) হ্যান্ডেল করা
-            const mediaElem = document.getElementById('playerMedia');
-            if (mediaElem) {
-                if (playerData.mediaType === 'video') {
-                    mediaElem.outerHTML = `<video id="playerMedia" src="${playerData.mediaUrl}" autoplay loop muted></video>`;
-                } else {
-                    mediaElem.outerHTML = `<img id="playerMedia" src="${playerData.mediaUrl}" alt="Player">`;
-                }
-            }
-        });
-
-        // লাইভ বিড টেক্সট আপডেট
-        socket.on('bidUpdated', (bidData) => {
-            const bidElem = document.getElementById('currentBidText');
-            const teamElem = document.getElementById('biddingTeamText');
-
-            if (bidElem) bidElem.innerText = bidData.amount;
-            if (teamElem) teamElem.innerText = bidData.teamName;
-        });
     </script>
 
 </body>

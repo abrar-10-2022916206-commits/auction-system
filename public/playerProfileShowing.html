@@ -224,24 +224,6 @@
             container.appendChild(toast);
             setTimeout(() => toast.remove(), 3000);
         }
-
-        // URL থেকে টুর্নামেন্ট কোড নেওয়া (যেমন: playerProfileShowing.html?code=NPL-S05)
-        const urlParams = new URLSearchParams(window.location.search);
-        const tournamentCode = urlParams.get('code');
-
-        if (tournamentCode) {
-            socket.emit('joinRoom', tournamentCode);
-        }
-
-        // প্লেয়ারের প্রোফাইল ডাটা রিসিভ করা
-        socket.on('updateDisplay', (playerData) => {
-            // আপনার HTML-এর আইডি অনুযায়ী DOM আপডেট করুন
-            const nameElem = document.getElementById('profileName');
-            const priceElem = document.getElementById('profileBasePrice');
-
-            if (nameElem) nameElem.innerText = playerData.name;
-            if (priceElem) priceElem.innerText = playerData.basePrice;
-        });
     </script>
 </body>
 
