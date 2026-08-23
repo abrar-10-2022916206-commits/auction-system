@@ -11,12 +11,25 @@ const os = require('os');
 const socketIO = require('socket.io');
 const fs = require('fs');
 const path = require('path');
+require('dotenv').config();
+const mongoose = require('mongoose');
+const Tournament = require('./models/Tournaments');
 
 const app = express();
 const server = http.createServer(app);
 const io = socketIO(server, {
     maxHttpBufferSize: 1e8 // 100 MB buffer limit for media uploads
 });
+app.use(express.json());
+
+const mongoUri = process.env.MONGO_URI;
+if (mongoUri && mongoUri !== 'your_mongodb_connection_string') {
+    mongoose.connect(mongoUri)
+        .then(() => console.log('MongoDB connected'))
+        .catch(error => console.error('MongoDB connection failed:', error.message));
+} else {
+    console.error('MONGO_URI is not configured. Tournament registration is disabled.');
+}
 
 // Serve static assets
 app.use(express.static('public'));
@@ -526,6 +539,13 @@ server.listen(PORT, HOST, () => {
 // Register / Setup API Route
 app.post('/api/tournament/setup', async (req, res) => {
   try {
+        if (mongoose.connection.readyState !== 1) {
+            return res.status(503).json({
+                success: false,
+                message: "Database is not connected. Set a valid MONGO_URI in .env and restart the server."
+            });
+        }
+
     const { tournamentCode, adminUsername, adminPassword, title } = req.body;
 
     // চেক করা এই টুর্নামেন্ট কোড ডাটাবেজে আগে থেকে আছে কি না
