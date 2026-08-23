@@ -525,7 +525,7 @@ io.on('connection', socket => {
     });
 });
 
-// ==================== START SERVER ====================
+// ==================== START SERVER
 
 server.listen(PORT, HOST, () => {
     const lanIp = getLocalNetworkIp();
