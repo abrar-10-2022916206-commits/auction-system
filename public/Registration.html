@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="bn">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Tournament Registration / Login</title>
+  <link rel="stylesheet" href="style.css">
+  <style>
+    .reg-card {
+      max-width: 450px;
+      margin: 50px auto;
+      padding: 25px;
+      background: #ffffff;
+      border-radius: 10px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+      font-family: Arial, sans-serif;
+    }
+    .form-group { margin-bottom: 15px; }
+    .form-group label { display: block; font-weight: bold; margin-bottom: 5px; }
+    .form-group input { width: 100%; padding: 10px; box-sizing: border-box; border: 1px solid #ccc; border-radius: 5px; }
+    .btn-submit { width: 100%; padding: 12px; background-color: #007bff; color: white; border: none; border-radius: 5px; font-size: 16px; cursor: pointer; }
+    .btn-submit:hover { background-color: #0056b3; }
+  </style>
+</head>
+<body>
+
+  <div class="reg-card">
+    <h2>Auction Tournament Setup</h2>
+    <p>Create a new tournament or login to an existing one.</p>
+    
+    <div class="form-group">
+      <label for="tournamentCode">Unique Tournament Code</label>
+      <input type="text" id="tournamentCode" placeholder="e.g. NPL-S05" required>
+    </div>
+
+    <div class="form-group">
+      <label for="adminUsername">Admin Username</label>
+      <input type="text" id="adminUsername" placeholder="Enter username" required>
+    </div>
+
+    <div class="form-group">
+      <label for="adminPassword">Password</label>
+      <input type="password" id="adminPassword" placeholder="Enter password" required>
+    </div>
+
+    <div class="form-group">
+      <label for="tournamentTitle">Tournament Title (Optional)</label>
+      <input type="text" id="tournamentTitle" placeholder="e.g. NPL Season 05 Auction">
+    </div>
+
+    <button class="btn-submit" onclick="handleRegistration()">Register & Open Admin Panel</button>
+  </div>
+
+  <script>
+    async function handleRegistration() {
+      const code = document.getElementById('tournamentCode').value.trim();
+      const username = document.getElementById('adminUsername').value.trim();
+      const password = document.getElementById('adminPassword').value.trim();
+      const title = document.getElementById('tournamentTitle').value.trim();
+
+      if (!code || !username || !password) {
+        alert("অনুগ্রহ করে Tournament Code, Username এবং Password টাইপ করুন!");
+        return;
+      }
+
+      try {
+        const response = await fetch('/api/tournament/setup', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            tournamentCode: code,
+            adminUsername: username,
+            adminPassword: password,
+            title: title
+          })
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+          alert(`সফলভাবে রেজিস্ট্রেশন হয়েছে! আপনার টুর্নামেন্ট কোড: ${code}`);
+          // রেজিস্ট্রেশন সফল হলে সরাসরি admin.html-এ নিয়ে যাবে কোডসহ
+          window.location.href = `/admin.html?code=${encodeURIComponent(code)}`;
+        } else {
+          alert(data.message || "রেজিস্ট্রেশনে সমস্যা হয়েছে!");
+        }
+      } catch (err) {
+        console.error(err);
+        alert("সার্ভারে কানেক্ট করা যাচ্ছে না!");
+      }
+    }
+  </script>
+</body>
+</html>
