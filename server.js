@@ -1,31 +1,20 @@
 /**
  * NPL Auction Server — Real-time Transfer Market Engine
  * Handles socket communication, auction configuration, player biddings,
- * transfers, free claims, squad validations, random number drawings,
- * and profile media uploads (images/videos by serial number).
+ * transfers, free claims, squad validations, and random number drawings.
  */
 
 const express = require('express');
 const http = require('http');
 const os = require('os');
 const socketIO = require('socket.io');
-const fs = require('fs');
-const path = require('path');
 
 const app = express();
 const server = http.createServer(app);
-const io = socketIO(server, {
-    maxHttpBufferSize: 1e8 // 100 MB buffer limit for media uploads
-});
+const io = new Server(server, { cors: { origin: "*" } });
 
 // Serve static assets
 app.use(express.static('public'));
-
-const uploadsDir = path.join(__dirname, 'public', 'uploads');
-if (!fs.existsSync(uploadsDir)) {
-    fs.mkdirSync(uploadsDir, { recursive: true });
-}
-app.use('/uploads', express.static(uploadsDir));
 
 const HOST = process.env.HOST || '0.0.0.0';
 const PORT = process.env.PORT || 3000;
@@ -45,40 +34,6 @@ function getLocalNetworkIp() {
     return 'localhost';
 }
 
-// ==================== MEDIA MANAGEMENT ====================
-
-/**
- * Scans public/uploads for media files mapped by serial number (e.g., 1.png, 2.mp4)
- */
-function getMediaMap() {
-    const mediaMap = {};
-    if (!fs.existsSync(uploadsDir)) return mediaMap;
-
-    try {
-        const files = fs.readdirSync(uploadsDir);
-        files.forEach(file => {
-            if (file.startsWith('.')) return;
-            const ext = path.extname(file).toLowerCase();
-            const basename = path.basename(file, ext);
-            const serial = parseInt(basename, 10);
-            if (!isNaN(serial) && serial > 0) {
-                const isVideo = ['.mp4', '.webm'].includes(ext);
-                const isImage = ['.png', '.jpg', '.jpeg', '.webp', '.gif'].includes(ext);
-                if (isVideo || isImage) {
-                    mediaMap[serial] = {
-                        url: `/uploads/${file}`,
-                        type: isVideo ? 'video' : 'image',
-                        ext: ext,
-                        filename: file
-                    };
-                }
-            }
-        });
-    } catch (e) {
-        console.error("Error reading uploads directory:", e);
-    }
-    return mediaMap;
-}
 
 // ==================== IN-MEMORY AUCTION STATE ====================
 
@@ -175,42 +130,12 @@ resetNumberState();
 // ==================== SOCKET REAL-TIME EVENTS ====================
 
 io.on('connection', socket => {
-    // Send initial configuration, state, and media map on connection
+    // Send initial configuration and state on connection
     socket.emit('config-update', { auctionTitle, auctionConfig, teamNames, playerList });
     socket.emit('update', { teams, soldPlayers: [...soldPlayers] });
-    socket.emit('media-update', getMediaMap());
     socket.emit('number-update', {
         number: currentNumber,
         phase: availableNumbers.some(number => !soldNumbers.has(number)) ? 'main' : 'skipped'
-    });
-
-    // Event: Media upload batch handler
-    socket.on('upload-media-batch', files => {
-        if (Array.isArray(files) && files.length > 0) {
-            let savedCount = 0;
-            files.forEach(item => {
-                if (item && item.filename && item.buffer) {
-                    const ext = path.extname(item.filename).toLowerCase();
-                    const basename = path.basename(item.filename, ext);
-                    const serial = parseInt(basename, 10);
-                    if (!isNaN(serial) && serial > 0) {
-                        const isVideo = ['.mp4', '.webm'].includes(ext);
-                        const isImage = ['.png', '.jpg', '.jpeg', '.webp', '.gif'].includes(ext);
-                        if (isVideo || isImage) {
-                            const destPath = path.join(uploadsDir, `${serial}${ext}`);
-                            fs.writeFileSync(destPath, Buffer.from(item.buffer));
-                            savedCount++;
-                        }
-                    }
-                }
-            });
-            const updatedMap = getMediaMap();
-            io.emit('media-update', updatedMap);
-            socket.emit('message', {
-                text: `📸 Successfully uploaded ${savedCount} profile media file(s)!`,
-                type: 'success'
-            });
-        }
     });
 
     // Event: Setup & Data Import submitted from Admin panel
@@ -239,7 +164,6 @@ io.on('connection', socket => {
 
         io.emit('config-update', { auctionTitle, auctionConfig, teamNames, playerList });
         io.emit('update', { teams, soldPlayers: [...soldPlayers] });
-        io.emit('media-update', getMediaMap());
         emitNumberUpdate();
         io.emit('message', {
             text: "⚙️ Auction setup updated and market reset!",

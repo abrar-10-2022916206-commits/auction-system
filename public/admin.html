@@ -50,7 +50,8 @@
                     <span class="stat-val" id="stat-remaining">0</span>
                 </div>
             </div>
-            <a href="/playerProfileShowing.html" target="_blank" class="btn btn-reset" style="text-decoration:none;">📺 Profile Stage</a>
+            <a href="/playerProfileShowing.html" target="_blank" class="btn btn-reset" style="text-decoration:none;">📺
+                Profile Stage</a>
             <button class="btn btn-reset" id="setup-btn" onclick="openSetupModal()">⚙️ Setup & Import</button>
             <button class="btn btn-reset" id="unsold-btn" onclick="markCurrentNumberUnsold()">⏭️ Skip (Unsold)</button>
             <button class="btn btn-reset" id="reset-btn" onclick="confirmReset()">🔄 Reset Market</button>
@@ -64,13 +65,16 @@
     <div class="modal-overlay" id="setup-modal">
         <div class="modal-box modal-box-large">
             <h3>⚙️ Auction Setup & Data Import</h3>
-            <p>Enter tournament title, import text files (`players.txt` & `teams.txt`), upload player profile images/videos, or configure parameters below.</p>
+            <p>Enter tournament title, import text files (`players.txt` & `teams.txt`), upload player profile
+                images/videos, or configure parameters below.</p>
 
             <div class="param-field" style="margin-bottom: 16px;">
-                <label style="font-size: 13px; font-weight: 700; color: var(--neon-green);">🏆 Tournament / Auction Title:</label>
-                <input type="text" id="setup-title" placeholder="e.g. Nuclear Football League 2026" style="font-size: 15px; padding: 10px 14px;">
+                <label style="font-size: 13px; font-weight: 700; color: var(--neon-green);">🏆 Tournament / Auction
+                    Title:</label>
+                <input type="text" id="setup-title" placeholder="e.g. Nuclear Football League 2026"
+                    style="font-size: 15px; padding: 10px 14px;">
             </div>
-            
+
             <div class="setup-grid">
                 <!-- Import Players Column -->
                 <div class="setup-col">
@@ -79,7 +83,8 @@
                         <span>📁 Click or drag players.txt file</span>
                         <input type="file" id="players-file" accept=".txt" style="display:none;">
                     </div>
-                    <textarea id="players-text" placeholder="Format: PlayerName_BatchNo/JerseyNo (one per line)&#10;e.g. ABDE Viliers_17&#10;Neymar Jr_10"></textarea>
+                    <textarea id="players-text"
+                        placeholder="Format: PlayerName_BatchNo/JerseyNo (one per line)&#10;e.g. ABDE Viliers_17&#10;Neymar Jr_10"></textarea>
                     <div class="setup-hint" id="players-count-hint">0 players loaded</div>
                 </div>
 
@@ -90,24 +95,30 @@
                         <span>📁 Click or drag teams.txt file</span>
                         <input type="file" id="teams-file" accept=".txt" style="display:none;">
                     </div>
-                    <textarea id="teams-text" placeholder="Format: Team Name (one per line)&#10;e.g. South Africa&#10;Brazil"></textarea>
+                    <textarea id="teams-text"
+                        placeholder="Format: Team Name (one per line)&#10;e.g. South Africa&#10;Brazil"></textarea>
                     <div class="setup-hint" id="teams-count-hint">0 teams loaded</div>
                 </div>
             </div>
 
             <!-- Profile Media Upload Section -->
-            <div style="margin: 16px 0; padding: 16px; background: rgba(0, 255, 136, 0.04); border: 1px dashed var(--border); border-radius: var(--radius); text-align: left;">
+            <div
+                style="margin: 16px 0; padding: 16px; background: rgba(0, 255, 136, 0.04); border: 1px dashed var(--border); border-radius: var(--radius); text-align: left;">
                 <label class="setup-label" style="margin-bottom: 8px;">📸 Upload Profile Media (Images / Videos)</label>
                 <p style="font-size: 12px; color: var(--text-secondary); margin-bottom: 12px;">
-                    Select folder or files named by serial number (e.g. <code>1.png</code>, <code>2.jpg</code>, <code>3.mp4</code>, <code>4.webm</code>). Serial numbers correspond to line numbers in <code>players.txt</code>.
+                    Select folder or files named by serial number (e.g. <code>1.png</code>, <code>2.jpg</code>,
+                    <code>3.mp4</code>, <code>4.webm</code>). Serial numbers correspond to line numbers in
+                    <code>players.txt</code>.
                 </p>
                 <div style="display: flex; gap: 12px; flex-wrap: wrap;">
                     <div class="file-dropzone" id="media-dropzone" style="flex: 1; min-width: 220px; padding: 14px;">
                         <span>📁 Select Folder or Files (1.png, 2.mp4...)</span>
-                        <input type="file" id="media-files-input" accept="image/*,video/*" multiple style="display:none;">
+                        <input type="file" id="media-files-input" accept="image/*,video/*" multiple
+                            style="display:none;">
                     </div>
                 </div>
-                <div class="setup-hint" id="media-count-hint" style="margin-top: 6px; text-align: left;">0 profile media files uploaded</div>
+                <div class="setup-hint" id="media-count-hint" style="margin-top: 6px; text-align: left;">0 profile media
+                    files uploaded</div>
             </div>
 
             <!-- Parameters Grid -->
@@ -141,7 +152,8 @@
     <div class="modal-overlay" id="reset-modal">
         <div class="modal-box">
             <h3>⚠️ Reset Transfer Market?</h3>
-            <p>This will clear all bid activity and restore team budgets. This action cannot be undone. Are you sure?</p>
+            <p>This will clear all bid activity and restore team budgets. This action cannot be undone. Are you sure?
+            </p>
             <div class="modal-actions">
                 <button class="btn btn-reset" onclick="doReset()">Yes, Reset</button>
                 <button class="btn btn-reset" onclick="closeResetModal()">Cancel</button>
@@ -686,6 +698,29 @@
         document.getElementById('setup-modal').addEventListener('click', e => {
             if (e.target === e.currentTarget) closeSetupModal();
         });
+
+        // অ্যাডমিন যে টুর্নামেন্ট সেটআপ বা সিলেক্ট করবেন তার কোড
+        // (এটি ইনপুট বক্স থেকেও নিতে পারেন)
+        let tournamentCode = "NPL-S05";
+
+        // অ্যাডমিন রুমে জয়েন করা
+        socket.emit('joinRoom', tournamentCode);
+
+        // ১. প্লেয়ার ট্রান্সফার বাটন ক্লিকের কোড
+        function transferPlayerToDisplay(playerData) {
+            socket.emit('transferPlayer', {
+                tournamentCode: tournamentCode,
+                playerData: playerData // যেমন: { name: 'Player A', mediaUrl: '...', mediaType: 'image' }
+            });
+        }
+
+        // ২. লাইভ বিড আপডেট করার কোড
+        function updateBid(bidAmount, teamName) {
+            socket.emit('placeBid', {
+                tournamentCode: tournamentCode,
+                bidData: { amount: bidAmount, teamName: teamName }
+            });
+        }
     </script>
 </body>
 

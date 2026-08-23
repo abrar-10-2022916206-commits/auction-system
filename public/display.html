@@ -5,11 +5,13 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Live Auction Display</title>
-    <meta name="description" content="Live football auction display. Real-time transfer budgets, squads, and bidding updates.">
+    <meta name="description"
+        content="Live football auction display. Real-time transfer budgets, squads, and bidding updates.">
     <link rel="stylesheet" href="style.css">
     <script src="/socket.io/socket.io.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
 </head>
+
 <body>
 
     <!-- Toast Notifications Container -->
@@ -37,7 +39,8 @@
             <div class="stat-chip" title="Total players bid">
                 ⚽ Bid: <span class="stat-val" id="total-sold">0</span>
             </div>
-            <button id="player-profile-btn" class="btn btn-export" type="button" onclick="window.location.href='playerProfileShowing.html'">👤 Player Profile</button>
+            <button id="player-profile-btn" class="btn btn-export" type="button"
+                onclick="window.location.href='playerProfileShowing.html'">👤 Player Profile</button>
             <button id="download-btn" class="btn btn-export" onclick="exportPDF()">📄 Export PDF</button>
         </div>
     </header>
@@ -201,41 +204,41 @@
         function playWhistleSound() {
             try {
                 const ctx = new (window.AudioContext || window.webkitAudioContext)();
-                
+
                 const osc1 = ctx.createOscillator();
                 const osc2 = ctx.createOscillator();
                 const gainNode = ctx.createGain();
-                
+
                 osc1.type = 'sine';
                 osc1.frequency.setValueAtTime(2000, ctx.currentTime);
                 osc1.frequency.linearRampToValueAtTime(2200, ctx.currentTime + 0.15);
-                
+
                 osc2.type = 'triangle';
                 osc2.frequency.setValueAtTime(2020, ctx.currentTime);
                 osc2.frequency.linearRampToValueAtTime(2220, ctx.currentTime + 0.15);
-                
+
                 const lfo = ctx.createOscillator();
                 const lfoGain = ctx.createGain();
                 lfo.frequency.value = 35;
                 lfoGain.gain.value = 40;
-                
+
                 lfo.connect(lfoGain);
                 lfoGain.connect(osc1.frequency);
                 lfoGain.connect(osc2.frequency);
-                
+
                 gainNode.gain.setValueAtTime(0, ctx.currentTime);
                 gainNode.gain.linearRampToValueAtTime(0.25, ctx.currentTime + 0.04);
                 gainNode.gain.setValueAtTime(0.25, ctx.currentTime + 0.18);
                 gainNode.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.35);
-                
+
                 osc1.connect(gainNode);
                 osc2.connect(gainNode);
                 gainNode.connect(ctx.destination);
-                
+
                 lfo.start();
                 osc1.start();
                 osc2.start();
-                
+
                 lfo.stop(ctx.currentTime + 0.4);
                 osc1.stop(ctx.currentTime + 0.4);
                 osc2.stop(ctx.currentTime + 0.4);
@@ -259,9 +262,9 @@
                 particle.style.animationDelay = (Math.random() * 0.4) + 's';
                 particle.style.animationDuration = (Math.random() * 1.5 + 1.5) + 's';
                 particle.style.transform = `rotate(${Math.random() * 360}deg)`;
-                
+
                 document.body.appendChild(particle);
-                
+
                 setTimeout(() => particle.remove(), 3000);
             }
         }
@@ -277,13 +280,13 @@
             const teamEl = document.getElementById('celebrate-team-name');
             const priceEl = document.getElementById('celebrate-price');
             const card = overlay.querySelector('.celebration-card');
-            
+
             const parsed = parsePlayerName(playerName);
             nameEl.textContent = parsed.displayName;
             if (parsed.badge) {
                 nameEl.innerHTML += ` <span class="player-badge">${parsed.badge}</span>`;
             }
-            
+
             teamEl.textContent = teamName;
 
             if (isTransfer) {
@@ -305,12 +308,12 @@
                 priceEl.style.background = 'linear-gradient(135deg, rgba(0, 255, 136, 0.2), rgba(0, 0, 0, 0.4))';
                 priceEl.style.borderColor = 'rgba(0, 255, 136, 0.3)';
             }
-            
+
             overlay.classList.add('active');
-            
+
             playWhistleSound();
             launchConfetti();
-            
+
             setTimeout(() => {
                 overlay.classList.remove('active');
             }, 3800);
@@ -349,13 +352,13 @@
             showToast(data.text, data.type);
 
             if (data.type === "error") {
-                errorSound.play().catch(() => {});
+                errorSound.play().catch(() => { });
             } else if (data.type === "success") {
                 const text = data.text;
                 const bidMatch = text.match(/⚽ (.*) (?:signed|bid) by (.*) for (\d+)! 📝/);
                 const freeMatch = text.match(/⚽ (.*) drafted for FREE by (.*)! 📝/);
                 const transferMatch = text.match(/🔄 (.*) transferred from .* to (.*) for (\d+)!/);
-                
+
                 if (bidMatch) {
                     triggerBiddingCelebration(bidMatch[1], bidMatch[2], bidMatch[3], false);
                 } else if (freeMatch) {
@@ -419,7 +422,43 @@
             }, 150);
         }
 
+        // URL থেকে টুর্নামেন্ট কোড নেওয়া (যেমন: display.html?code=NPL-S05)
+        const urlParams = new URLSearchParams(window.location.search);
+        const tournamentCode = urlParams.get('code');
+
+        if (tournamentCode) {
+            socket.emit('joinRoom', tournamentCode);
+        } else {
+            console.warn("URL-এ কোনো টুর্নামেন্ট কোড নেই!");
+        }
+
+        // অ্যাডমিন প্লেয়ার পাঠালে স্ক্রিনের তথ্য আপডেট করা
+        socket.on('updateDisplay', (playerData) => {
+            // আপনার HTML আইডি অনুযায়ী এগুলো পরিবর্তন করতে পারেন
+            const nameElem = document.getElementById('playerName');
+            if (nameElem) nameElem.innerText = playerData.name;
+
+            // মিডিয়া (ছবি/ভিডিও) হ্যান্ডেল করা
+            const mediaElem = document.getElementById('playerMedia');
+            if (mediaElem) {
+                if (playerData.mediaType === 'video') {
+                    mediaElem.outerHTML = `<video id="playerMedia" src="${playerData.mediaUrl}" autoplay loop muted></video>`;
+                } else {
+                    mediaElem.outerHTML = `<img id="playerMedia" src="${playerData.mediaUrl}" alt="Player">`;
+                }
+            }
+        });
+
+        // লাইভ বিড টেক্সট আপডেট
+        socket.on('bidUpdated', (bidData) => {
+            const bidElem = document.getElementById('currentBidText');
+            const teamElem = document.getElementById('biddingTeamText');
+
+            if (bidElem) bidElem.innerText = bidData.amount;
+            if (teamElem) teamElem.innerText = bidData.teamName;
+        });
     </script>
 
 </body>
+
 </html>
