@@ -925,6 +925,7 @@ h1 {
 }
 
 .squad-player-name {
+    font-size: 15px;
     font-weight: 500;
     display: inline-flex;
     align-items: center;
@@ -932,7 +933,7 @@ h1 {
 }
 
 .squad-player-badge {
-    font-size: 15px;
+    font-size: 8px;
     font-weight: 800;
     padding: 1px 4px;
     border-radius: 3px;
