@@ -249,8 +249,9 @@ function createEmptyAuctionState() {
 
 async function loadAuctionState(tournamentId) {
     if (auctionStates.has(tournamentId)) return auctionStates.get(tournamentId);
-    const room = await (await getDatabase()).collection('rooms').findOne({ tournamentId }, { projection: { auctionState: 1 } });
+    const room = await (await getDatabase()).collection('rooms').findOne({ tournamentId }, { projection: { title: 1, auctionState: 1 } });
     const saved = room && room.auctionState ? room.auctionState : createEmptyAuctionState();
+    if (!saved.auctionTitle && room && room.title) saved.auctionTitle = room.title;
     saved.teams = Array.isArray(saved.teams) ? saved.teams : [];
     saved.soldPlayers = Array.isArray(saved.soldPlayers) ? saved.soldPlayers : [];
     saved.soldNumbers = Array.isArray(saved.soldNumbers) ? saved.soldNumbers : [];
@@ -428,10 +429,6 @@ io.on('connection', async socket => {
     socket.on('setup-auction', data => {
         useRoomState();
         if (!requireAdmin()) return;
-        if (typeof data.title === 'string') {
-            auctionTitle = data.title.trim();
-        }
-
         if (data.config && typeof data.config === 'object') {
             const { baseTeamAmount, basePlayerPrice, minPlayers, maxPlayers } = data.config;
             if (Number(baseTeamAmount) > 0) auctionConfig.baseTeamAmount = Number(baseTeamAmount);

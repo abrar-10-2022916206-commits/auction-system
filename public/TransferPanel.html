@@ -65,15 +65,8 @@
     <div class="modal-overlay" id="setup-modal">
         <div class="modal-box modal-box-large">
             <h3>⚙️ Auction Setup & Data Import</h3>
-            <p>Enter tournament title, import text files (`players.txt` & `teams.txt`), upload player profile
+            <p>Import text files (`players.txt` & `teams.txt`), upload player profile
                 images/videos, or configure parameters below.</p>
-
-            <div class="param-field" style="margin-bottom: 16px;">
-                <label style="font-size: 13px; font-weight: 700; color: var(--neon-green);">🏆 Tournament / Auction
-                    Title:</label>
-                <input type="text" id="setup-title" placeholder="e.g. Nuclear Football League 2026"
-                    style="font-size: 15px; padding: 10px 14px;">
-            </div>
 
             <div class="setup-grid">
                 <!-- Import Players Column -->
@@ -361,7 +354,6 @@
                 auctionTitle = data.auctionTitle;
                 const titleText = auctionTitle ? `${auctionTitle} — Admin Control` : "Tournament Auction Control";
                 document.getElementById('page-header-title').textContent = titleText;
-                document.getElementById('setup-title').value = auctionTitle;
             }
 
             if (data.auctionConfig) {
@@ -601,7 +593,6 @@
          * Submits setup and file data to server
          */
         function doSetupAuction() {
-            const titleInput = document.getElementById('setup-title').value.trim();
             const parsedPlayers = document.getElementById('players-text').value.split(/\r?\n/).map(s => s.trim()).filter(Boolean);
             const parsedTeams = document.getElementById('teams-text').value.split(/\r?\n/).map(s => s.trim()).filter(Boolean);
 
@@ -623,7 +614,6 @@
             };
 
             socket.emit('setup-auction', {
-                title: titleInput,
                 playerList: parsedPlayers,
                 teamNames: parsedTeams,
                 config
