@@ -4,7 +4,7 @@
 <head>
 	<meta charset="UTF-8">
 	<meta name="viewport" content="width=device-width, initial-scale=1.0">
-	<title>Sign In | NPL Auction</title>
+	<title>Sign In | Auction</title>
 	<meta name="description" content="Sign in to manage or follow a tournament auction.">
 	<link rel="stylesheet" href="style.css">
 </head>
@@ -12,7 +12,6 @@
 <body class="auth-page">
 	<main class="auth-shell">
 		<section class="auth-intro" aria-labelledby="auth-title">
-			<div class="auth-mark" aria-hidden="true">NPL<span>05</span></div>
 			<p class="auth-kicker">Tournament auction platform</p>
 			<h1 id="auth-title">Enter the<br><strong>auction room.</strong></h1>
 			<p class="auth-copy">Manage your tournament from the control panel, or join a live auction with your tournament ID.</p>
@@ -37,7 +36,7 @@
 				</div>
 				<div class="form-field">
 					<label for="admin-tournament">Tournament ID <span>unique</span></label>
-					<input id="admin-tournament" name="tournament" type="text" pattern="[A-Za-z0-9_-]{3,32}" autocomplete="off" placeholder="NPL-2026-FINAL" required>
+					<input id="admin-tournament" name="tournament" type="text" pattern="[A-Za-z0-9_-]{3,32}" autocomplete="off" placeholder="e-g_1552" required>
 					<small>3-32 letters, numbers, hyphens, or underscores.</small>
 				</div>
 				<div class="form-field">
@@ -50,7 +49,7 @@
 			<form class="auth-form is-hidden" id="user-form" novalidate>
 				<div class="form-field">
 					<label for="user-tournament">Tournament ID</label>
-					<input id="user-tournament" name="tournament" type="text" pattern="[A-Za-z0-9_-]{3,32}" autocomplete="off" placeholder="NPL-2026-FINAL" required>
+					<input id="user-tournament" name="tournament" type="text" pattern="[A-Za-z0-9_-]{3,32}" autocomplete="off" placeholder="e-g_1552" required>
 					<small>Use the unique ID shared by your tournament admin.</small>
 				</div>
 				<button class="auth-submit" type="submit">Join live auction <span aria-hidden="true">&#8594;</span></button>
