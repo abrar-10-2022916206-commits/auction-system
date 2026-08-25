@@ -138,6 +138,7 @@ app.get('/api/rooms/:tournamentId', async (request, response) => {
 // Serve static assets
 app.use(express.static('public'));
 app.get('/', (request, response) => response.sendFile(path.join(__dirname, 'public', 'Login.html')));
+app.get('/Display.html', (request, response) => response.sendFile(path.join(__dirname, 'public', 'display.html')));
 
 const uploadsDir = path.join(__dirname, 'public', 'uploads');
 if (!fs.existsSync(uploadsDir)) {
@@ -665,7 +666,7 @@ getDatabase()
             console.log(`NPL Auction Server running at http://localhost:${PORT}`);
             console.log(`Local Network: http://${lanIp}:${PORT}`);
             console.log(`Admin Panel: http://${lanIp}:${PORT}/TransferPanel.html`);
-            console.log(`Live Display: http://${lanIp}:${PORT}/Display.html`);
+            console.log(`Live Display: http://${lanIp}:${PORT}/display.html`);
             console.log(`Player Profile: http://${lanIp}:${PORT}/playerProfileShowing.html`);
         });
     })
