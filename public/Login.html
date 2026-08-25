@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<title>Sign In | NPL Auction</title>
+	<meta name="description" content="Sign in to manage or follow a tournament auction.">
+	<link rel="stylesheet" href="style.css">
+</head>
+
+<body class="auth-page">
+	<main class="auth-shell">
+		<section class="auth-intro" aria-labelledby="auth-title">
+			<div class="auth-mark" aria-hidden="true">NPL<span>05</span></div>
+			<p class="auth-kicker">Tournament auction platform</p>
+			<h1 id="auth-title">Enter the<br><strong>auction room.</strong></h1>
+			<p class="auth-copy">Manage your tournament from the control panel, or join a live auction with your tournament ID.</p>
+			<div class="auth-rule" aria-hidden="true"><span></span><span></span><span></span></div>
+		</section>
+
+		<section class="auth-panel" aria-label="Sign in form">
+			<div class="auth-panel-heading">
+				<p class="auth-kicker">Welcome back</p>
+				<h2>Sign in</h2>
+			</div>
+
+			<div class="auth-tabs" role="tablist" aria-label="Account type">
+				<button class="auth-tab is-active" id="admin-tab" type="button" role="tab" aria-selected="true" aria-controls="admin-form">Admin</button>
+				<button class="auth-tab" id="user-tab" type="button" role="tab" aria-selected="false" aria-controls="user-form">Participant</button>
+			</div>
+
+			<form class="auth-form" id="admin-form" novalidate>
+				<div class="form-field">
+					<label for="admin-email">Email address</label>
+					<input id="admin-email" name="email" type="email" autocomplete="email" placeholder="admin@example.com" required>
+				</div>
+				<div class="form-field">
+					<label for="admin-tournament">Tournament ID <span>unique</span></label>
+					<input id="admin-tournament" name="tournament" type="text" pattern="[A-Za-z0-9_-]{3,32}" autocomplete="off" placeholder="NPL-2026-FINAL" required>
+					<small>3-32 letters, numbers, hyphens, or underscores.</small>
+				</div>
+				<div class="form-field">
+					<label for="admin-password">Password</label>
+					<input id="admin-password" name="password" type="password" autocomplete="current-password" placeholder="Enter your password" minlength="6" required>
+				</div>
+				<button class="auth-submit" type="submit">Open control panel <span aria-hidden="true">&#8594;</span></button>
+			</form>
+
+			<form class="auth-form is-hidden" id="user-form" novalidate>
+				<div class="form-field">
+					<label for="user-tournament">Tournament ID</label>
+					<input id="user-tournament" name="tournament" type="text" pattern="[A-Za-z0-9_-]{3,32}" autocomplete="off" placeholder="NPL-2026-FINAL" required>
+					<small>Use the unique ID shared by your tournament admin.</small>
+				</div>
+				<button class="auth-submit" type="submit">Join live auction <span aria-hidden="true">&#8594;</span></button>
+			</form>
+
+			<p class="auth-message" id="auth-message" role="alert" aria-live="polite"></p>
+			<p class="auth-footer">Need to create a tournament? <a href="Registration.html">Register as admin</a></p>
+		</section>
+	</main>
+
+	<div class="developer-credit-corner">© Developed by ABRAR1552</div>
+
+	<script>
+		const adminTab = document.getElementById('admin-tab');
+		const userTab = document.getElementById('user-tab');
+		const adminForm = document.getElementById('admin-form');
+		const userForm = document.getElementById('user-form');
+		const message = document.getElementById('auth-message');
+
+		function showMode(mode) {
+			const adminMode = mode === 'admin';
+			adminTab.classList.toggle('is-active', adminMode);
+			userTab.classList.toggle('is-active', !adminMode);
+			adminTab.setAttribute('aria-selected', adminMode);
+			userTab.setAttribute('aria-selected', !adminMode);
+			adminForm.classList.toggle('is-hidden', !adminMode);
+			userForm.classList.toggle('is-hidden', adminMode);
+			message.textContent = '';
+		}
+
+		async function handleLogin(event, destination) {
+			event.preventDefault();
+			const form = event.currentTarget;
+			message.className = 'auth-message';
+
+			if (!form.checkValidity()) {
+				message.classList.add('is-error');
+				message.textContent = 'Please check the highlighted fields and try again.';
+				form.reportValidity();
+				return;
+			}
+
+			const submit = form.querySelector('.auth-submit');
+			submit.disabled = true;
+			submit.classList.add('is-loading');
+			const isAdmin = destination === 'TransferPanel.html';
+			try {
+				const response = await fetch(`/api/auth/login/${isAdmin ? 'admin' : 'participant'}`, {
+					method: 'POST',
+					headers: { 'Content-Type': 'application/json' },
+					body: JSON.stringify(isAdmin ? {
+						email: form.elements.email.value.trim(),
+						tournamentId: form.elements.tournament.value.trim(),
+						password: form.elements.password.value
+					} : {
+						tournamentId: form.elements.tournament.value.trim()
+					})
+				});
+				const result = await response.json();
+				if (!response.ok) throw new Error(result.error || 'Login failed.');
+				sessionStorage.setItem('authToken', result.token);
+				sessionStorage.setItem('tournamentId', result.tournamentId);
+				sessionStorage.setItem('accountType', result.role);
+				sessionStorage.setItem('auctionTitle', result.title);
+				window.location.href = destination;
+			} catch (error) {
+				message.classList.add('is-error');
+				message.textContent = error.message;
+			} finally {
+				submit.disabled = false;
+				submit.classList.remove('is-loading');
+			}
+		}
+
+		adminTab.addEventListener('click', () => showMode('admin'));
+		userTab.addEventListener('click', () => showMode('user'));
+		adminForm.addEventListener('submit', event => handleLogin(event, 'TransferPanel.html'));
+		userForm.addEventListener('submit', event => handleLogin(event, 'Display.html'));
+	</script>
+</body>
+
+</html>

@@ -163,7 +163,7 @@
 
     <script>
         // Initialize Socket.io connection & Audio
-        const socket = io();
+        const socket = io({ auth: { token: sessionStorage.getItem('authToken') } });
         const errorSound = new Audio("beep.mp3");
 
         // State variables
@@ -586,18 +586,12 @@
 
             let processed = 0;
             const payload = [];
-
             files.forEach(file => {
                 const reader = new FileReader();
-                reader.onload = evt => {
-                    payload.push({
-                        filename: file.name,
-                        buffer: evt.target.result
-                    });
+                reader.onload = event => {
+                    payload.push({ filename: file.name, buffer: event.target.result });
                     processed++;
-                    if (processed === files.length) {
-                        socket.emit('upload-media-batch', payload);
-                    }
+                    if (processed === files.length) socket.emit('upload-media-batch', payload);
                 };
                 reader.readAsArrayBuffer(file);
             });

@@ -9,6 +9,10 @@ const express = require('express');
 const http = require('http');
 const os = require('os');
 const socketIO = require('socket.io');
+const bcrypt = require('bcryptjs');
+const jwt = require('jsonwebtoken');
+const { MongoClient } = require('mongodb');
+require('dotenv').config();
 const fs = require('fs');
 const path = require('path');
 
@@ -18,8 +22,109 @@ const io = socketIO(server, {
     maxHttpBufferSize: 1e8 // 100 MB buffer limit for media uploads
 });
 
+app.use(express.json({ limit: '2mb' }));
+
+app.get('/health', (request, response) => response.json({ status: 'ok' }));
+
+const JWT_SECRET = process.env.JWT_SECRET || 'development-only-change-this-secret';
+const mongoClient = process.env.MONGODB_URI ? new MongoClient(process.env.MONGODB_URI) : null;
+let database;
+
+async function getDatabase() {
+    if (!mongoClient) throw new Error('MONGODB_URI is not configured');
+    if (!database) {
+        await mongoClient.connect();
+        database = mongoClient.db(process.env.MONGODB_DB || 'npl-auction');
+        await database.collection('rooms').createIndex({ tournamentId: 1 }, { unique: true });
+        await database.collection('rooms').createIndex({ email: 1 });
+    }
+    return database;
+}
+
+function normalizeTournamentId(value) {
+    return String(value || '').trim().toUpperCase();
+}
+
+function isValidTournamentId(value) {
+    return /^[A-Z0-9_-]{3,32}$/.test(value);
+}
+
+function issueToken(room, role) {
+    return jwt.sign({ roomId: room._id.toString(), tournamentId: room.tournamentId, role }, JWT_SECRET, { expiresIn: '12h' });
+}
+
+function authenticateRequest(request, response, next) {
+    try {
+        const header = request.headers.authorization || '';
+        if (!header.startsWith('Bearer ')) throw new Error('Missing token');
+        request.user = jwt.verify(header.slice(7), JWT_SECRET);
+        next();
+    } catch (error) {
+        response.status(401).json({ error: 'Please sign in again.' });
+    }
+}
+
+function sendServerError(response, error) {
+    console.error(error.message);
+    response.status(error.message === 'MONGODB_URI is not configured' ? 503 : 500).json({
+        error: 'Authentication service is not configured. Add the MongoDB environment variables and try again.'
+    });
+}
+
+app.post('/api/auth/register', async (request, response) => {
+    const { email, tournamentId, password, title } = request.body || {};
+    const normalizedId = normalizeTournamentId(tournamentId);
+    if (!/^\S+@\S+\.\S+$/.test(String(email || '').trim()) || !isValidTournamentId(normalizedId) || String(password || '').length < 6 || !String(title || '').trim()) {
+        return response.status(400).json({ error: 'Enter a valid email, Tournament ID, password, and title.' });
+    }
+
+    try {
+        const rooms = (await getDatabase()).collection('rooms');
+        const room = {
+            email: String(email).trim().toLowerCase(),
+            tournamentId: normalizedId,
+            passwordHash: await bcrypt.hash(password, 12),
+            title: String(title).trim(),
+            createdAt: new Date()
+        };
+        const result = await rooms.insertOne(room);
+        room._id = result.insertedId;
+        response.status(201).json({ token: issueToken(room, 'admin'), tournamentId: room.tournamentId, title: room.title, role: 'admin' });
+    } catch (error) {
+        if (error.code === 11000) return response.status(409).json({ error: 'That Tournament ID is already in use.' });
+        sendServerError(response, error);
+    }
+});
+
+app.post('/api/auth/login/admin', async (request, response) => {
+    const { email, tournamentId, password } = request.body || {};
+    try {
+        const room = await (await getDatabase()).collection('rooms').findOne({
+            email: String(email || '').trim().toLowerCase(),
+            tournamentId: normalizeTournamentId(tournamentId)
+        });
+        if (!room || !(await bcrypt.compare(String(password || ''), room.passwordHash))) {
+            return response.status(401).json({ error: 'Invalid admin email, Tournament ID, or password.' });
+        }
+        response.json({ token: issueToken(room, 'admin'), tournamentId: room.tournamentId, title: room.title, role: 'admin' });
+    } catch (error) {
+        sendServerError(response, error);
+    }
+});
+
+app.post('/api/auth/login/participant', async (request, response) => {
+    try {
+        const room = await (await getDatabase()).collection('rooms').findOne({ tournamentId: normalizeTournamentId(request.body && request.body.tournamentId) });
+        if (!room) return response.status(404).json({ error: 'Tournament room not found.' });
+        response.json({ token: issueToken(room, 'participant'), tournamentId: room.tournamentId, title: room.title, role: 'participant' });
+    } catch (error) {
+        sendServerError(response, error);
+    }
+});
+
 // Serve static assets
 app.use(express.static('public'));
+app.get('/', (request, response) => response.sendFile(path.join(__dirname, 'public', 'Login.html')));
 
 const uploadsDir = path.join(__dirname, 'public', 'uploads');
 if (!fs.existsSync(uploadsDir)) {
@@ -174,7 +279,24 @@ resetNumberState();
 
 // ==================== SOCKET REAL-TIME EVENTS ====================
 
+io.use((socket, next) => {
+    try {
+        const token = socket.handshake.auth && socket.handshake.auth.token;
+        if (!token) return next(new Error('Authentication required'));
+        socket.user = jwt.verify(token, JWT_SECRET);
+        next();
+    } catch (error) {
+        next(new Error('Invalid or expired session'));
+    }
+});
+
 io.on('connection', socket => {
+    const requireAdmin = () => {
+        if (socket.user.role === 'admin') return true;
+        socket.emit('message', { text: 'Admin access is required for this action.', type: 'error' });
+        return false;
+    };
+
     // Send initial configuration, state, and media map on connection
     socket.emit('config-update', { auctionTitle, auctionConfig, teamNames, playerList });
     socket.emit('update', { teams, soldPlayers: [...soldPlayers] });
@@ -186,6 +308,7 @@ io.on('connection', socket => {
 
     // Event: Media upload batch handler
     socket.on('upload-media-batch', files => {
+        if (!requireAdmin()) return;
         if (Array.isArray(files) && files.length > 0) {
             let savedCount = 0;
             files.forEach(item => {
@@ -215,6 +338,7 @@ io.on('connection', socket => {
 
     // Event: Setup & Data Import submitted from Admin panel
     socket.on('setup-auction', data => {
+        if (!requireAdmin()) return;
         if (typeof data.title === 'string') {
             auctionTitle = data.title.trim();
         }
@@ -248,6 +372,7 @@ io.on('connection', socket => {
     });
 
     socket.on('free-claim', data => {
+        if (!requireAdmin()) return;
         const teamIndex = parseInt(data.teamIndex);
         const playerName = data.player;
         const playerSerial = parseInt(data.serial, 10);
@@ -275,6 +400,7 @@ io.on('connection', socket => {
     });
 
     socket.on('bid', data => {
+        if (!requireAdmin()) return;
         const teamIndex = parseInt(data.teamIndex);
         const bidAmount = parseInt(data.bid);
         const playerName = data.player;
@@ -350,6 +476,7 @@ io.on('connection', socket => {
     });
 
     socket.on('sell-player', data => {
+        if (!requireAdmin()) return;
         const playerName = data && data.player;
         const buyerIndex = parseInt(data && data.buyerIndex, 10);
         const price = parseInt(data && data.price, 10);
@@ -452,6 +579,7 @@ io.on('connection', socket => {
     });
 
     socket.on('release-player', data => {
+        if (!requireAdmin()) return;
         const playerName = data && data.player;
         const playerSerial = data && data.serial;
 
@@ -493,15 +621,18 @@ io.on('connection', socket => {
     });
 
     socket.on('roll-number', () => {
+        if (!requireAdmin()) return;
         drawNextNumber();
         emitNumberUpdate();
     });
 
     socket.on('mark-unsold', () => {
+        if (!requireAdmin()) return;
         if (currentNumber !== null) completeNumber(currentNumber, true);
     });
 
     socket.on('reset', () => {
+        if (!requireAdmin()) return;
         resetAuctionState();
         io.emit('update', { teams, soldPlayers: [...soldPlayers] });
         emitNumberUpdate();
@@ -514,11 +645,18 @@ io.on('connection', socket => {
 
 // ==================== START SERVER
 
-server.listen(PORT, HOST, () => {
-    const lanIp = getLocalNetworkIp();
-    console.log(`🏆 NPL Auction Server running at http://localhost:${PORT}`);
-    console.log(`   Local Network: http://${lanIp}:${PORT}`);
-    console.log(`   Admin Panel   : http://${lanIp}:${PORT}/admin.html`);
-    console.log(`   Live Display  : http://${lanIp}:${PORT}/display.html`);
-    console.log(`   Player Profile: http://${lanIp}:${PORT}/playerProfileShowing.html`);
-});
+getDatabase()
+    .then(() => {
+        server.listen(PORT, HOST, () => {
+            const lanIp = getLocalNetworkIp();
+            console.log(`NPL Auction Server running at http://localhost:${PORT}`);
+            console.log(`Local Network: http://${lanIp}:${PORT}`);
+            console.log(`Admin Panel: http://${lanIp}:${PORT}/TransferPanel.html`);
+            console.log(`Live Display: http://${lanIp}:${PORT}/Display.html`);
+            console.log(`Player Profile: http://${lanIp}:${PORT}/playerProfileShowing.html`);
+        });
+    })
+    .catch(error => {
+        console.error(`MongoDB startup connection failed: ${error.message}`);
+        process.exitCode = 1;
+    });

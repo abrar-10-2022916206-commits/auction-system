@@ -71,7 +71,7 @@
 
     <script>
         // Initialize Socket connection
-        const socket = io();
+        const socket = io({ auth: { token: sessionStorage.getItem('authToken') } });
         const container = document.getElementById("teams-container");
 
         // Active Configuration Defaults

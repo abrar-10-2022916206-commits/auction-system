@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Create Auction Room | NPL Auction</title>
+    <meta name="description" content="Create a tournament auction room.">
+    <link rel="stylesheet" href="style.css">
+</head>
+
+<body class="auth-page">
+    <main class="auth-shell">
+        <section class="auth-intro" aria-labelledby="register-title">
+            <div class="auth-mark" aria-hidden="true">NPL<span>05</span></div>
+            <p class="auth-kicker">Start your tournament</p>
+            <h1 id="register-title">Build your<br><strong>auction room.</strong></h1>
+            <p class="auth-copy">Create a private room for your tournament, then use the unique ID to manage and share the live auction.</p>
+            <div class="auth-rule" aria-hidden="true"><span></span><span></span><span></span></div>
+        </section>
+
+        <section class="auth-panel" aria-label="Create auction room form">
+            <div class="auth-panel-heading">
+                <p class="auth-kicker">Admin registration</p>
+                <h2>Create room</h2>
+            </div>
+
+            <form class="auth-form" id="registration-form" novalidate>
+                <div class="form-field">
+                    <label for="registration-email">Email address</label>
+                    <input id="registration-email" name="email" type="email" autocomplete="email" placeholder="admin@example.com" required>
+                </div>
+                <div class="form-field">
+                    <label for="registration-tournament">Tournament ID <span>unique</span></label>
+                    <input id="registration-tournament" name="tournament" type="text" pattern="[A-Za-z0-9_-]{3,32}" autocomplete="off" placeholder="NPL-2026-FINAL" required>
+                    <small>3-32 letters, numbers, hyphens, or underscores.</small>
+                </div>
+                <div class="form-field">
+                    <label for="registration-password">Password</label>
+                    <input id="registration-password" name="password" type="password" autocomplete="new-password" placeholder="At least 6 characters" minlength="6" required>
+                </div>
+                <div class="form-field">
+                    <label for="registration-title">Tournament title</label>
+                    <input id="registration-title" name="title" type="text" autocomplete="organization" placeholder="NPL Season 05 Final" maxlength="80" required>
+                </div>
+                <button class="auth-submit" type="submit">Create auction room <span aria-hidden="true">&#8594;</span></button>
+            </form>
+
+            <p class="auth-message" id="registration-message" role="alert" aria-live="polite"></p>
+            <p class="auth-footer">Already have a room? <a href="Login.html">Sign in as admin</a></p>
+        </section>
+    </main>
+
+    <div class="developer-credit-corner">© Developed by ABRAR1552</div>
+
+    <script>
+        const form = document.getElementById('registration-form');
+        const message = document.getElementById('registration-message');
+
+        form.addEventListener('submit', async event => {
+            event.preventDefault();
+            message.className = 'auth-message';
+
+            if (!form.checkValidity()) {
+                message.classList.add('is-error');
+                message.textContent = 'Please check the highlighted fields and try again.';
+                form.reportValidity();
+                return;
+            }
+
+            const submit = form.querySelector('.auth-submit');
+            submit.disabled = true;
+            submit.classList.add('is-loading');
+            try {
+                const response = await fetch('/api/auth/register', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        email: form.elements.email.value.trim(),
+                        tournamentId: form.elements.tournament.value.trim(),
+                        password: form.elements.password.value,
+                        title: form.elements.title.value.trim()
+                    })
+                });
+                const result = await response.json();
+                if (!response.ok) throw new Error(result.error || 'Registration failed.');
+                sessionStorage.setItem('authToken', result.token);
+                sessionStorage.setItem('tournamentId', result.tournamentId);
+                sessionStorage.setItem('accountType', result.role);
+                sessionStorage.setItem('auctionTitle', result.title);
+                window.location.href = 'TransferPanel.html';
+            } catch (error) {
+                message.classList.add('is-error');
+                message.textContent = error.message;
+            } finally {
+                submit.disabled = false;
+                submit.classList.remove('is-loading');
+            }
+        });
+    </script>
+</body>
+
+</html>
