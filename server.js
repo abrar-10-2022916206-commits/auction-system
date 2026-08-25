@@ -173,8 +173,8 @@ function getLocalNetworkIp() {
 
 // ==================== MEDIA MANAGEMENT ====================
 
-function getMediaMap() {
-    return mediaMap;
+function getMediaMap(state) {
+    return state && state.mediaMap ? state.mediaMap : {};
 }
 
 function uploadMediaToCloudinary(buffer, options) {
@@ -366,8 +366,9 @@ io.on('connection', async socket => {
     const tournamentId = socket.user.tournamentId;
     const socketRoom = `auction:${tournamentId}`;
     socket.join(socketRoom);
-    activateAuctionState(tournamentId, await loadAuctionState(tournamentId));
-    const useRoomState = () => activateAuctionState(tournamentId, auctionStates.get(tournamentId));
+    const roomState = await loadAuctionState(tournamentId);
+    activateAuctionState(tournamentId, roomState);
+    const useRoomState = () => activateAuctionState(tournamentId, roomState);
     const requireAdmin = () => {
         if (socket.user.role === 'admin') return true;
         socket.emit('message', { text: 'Admin access is required for this action.', type: 'error' });
@@ -377,7 +378,7 @@ io.on('connection', async socket => {
     // Send initial configuration, state, and media map on connection
     socket.emit('config-update', { auctionTitle, auctionConfig, teamNames, playerList });
     socket.emit('update', { teams, soldPlayers: [...soldPlayers] });
-    socket.emit('media-update', getMediaMap(tournamentId));
+    socket.emit('media-update', getMediaMap(roomState));
     socket.emit('number-update', {
         number: currentNumber,
         phase: availableNumbers.some(number => !soldNumbers.has(number)) ? 'main' : 'skipped'
@@ -429,7 +430,7 @@ io.on('connection', async socket => {
         const errors = [];
         results.forEach(result => {
             if (result.status === 'fulfilled') {
-                mediaMap[result.value.serial] = result.value;
+                roomState.mediaMap[result.value.serial] = result.value;
                 savedCount++;
             } else {
                 errors.push(result.reason.message);
@@ -437,8 +438,11 @@ io.on('connection', async socket => {
         });
 
         if (savedCount > 0) {
-            await persistActiveAuctionState();
-            io.to(socketRoom).emit('media-update', getMediaMap());
+            await (await getDatabase()).collection('rooms').updateOne(
+                { tournamentId },
+                { $set: { 'auctionState.mediaMap': roomState.mediaMap, updatedAt: new Date() } }
+            );
+            io.to(socketRoom).emit('media-update', getMediaMap(roomState));
         }
 
         socket.emit('message', {
@@ -471,7 +475,7 @@ io.on('connection', async socket => {
 
         io.to(socketRoom).emit('config-update', { auctionTitle, auctionConfig, teamNames, playerList });
         io.to(socketRoom).emit('update', { teams, soldPlayers: [...soldPlayers] });
-        io.to(socketRoom).emit('media-update', getMediaMap());
+        io.to(socketRoom).emit('media-update', getMediaMap(roomState));
         emitNumberUpdate();
         io.to(socketRoom).emit('message', {
             text: "⚙️ Auction setup updated and market reset!",
