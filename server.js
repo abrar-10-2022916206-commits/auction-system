@@ -66,8 +66,8 @@ function authenticateRequest(request, response, next) {
 
 function sendServerError(response, error) {
     console.error(error.message);
-    response.status(error.message === 'MONGODB_URI is not configured' ? 503 : 500).json({
-        error: 'Authentication service is not configured. Add the MongoDB environment variables and try again.'
+    response.status(503).json({
+        error: 'Database unavailable. Check the MongoDB URI, Atlas network access, and Render environment variables.'
     });
 }
 
@@ -117,6 +117,19 @@ app.post('/api/auth/login/participant', async (request, response) => {
         const room = await (await getDatabase()).collection('rooms').findOne({ tournamentId: normalizeTournamentId(request.body && request.body.tournamentId) });
         if (!room) return response.status(404).json({ error: 'Tournament room not found.' });
         response.json({ token: issueToken(room, 'participant'), tournamentId: room.tournamentId, title: room.title, role: 'participant' });
+    } catch (error) {
+        sendServerError(response, error);
+    }
+});
+
+app.get('/api/rooms/:tournamentId', async (request, response) => {
+    try {
+        const room = await (await getDatabase()).collection('rooms').findOne(
+            { tournamentId: normalizeTournamentId(request.params.tournamentId) },
+            { projection: { _id: 0, tournamentId: 1, title: 1 } }
+        );
+        if (!room) return response.status(404).json({ error: 'Tournament room not found.' });
+        response.json(room);
     } catch (error) {
         sendServerError(response, error);
     }

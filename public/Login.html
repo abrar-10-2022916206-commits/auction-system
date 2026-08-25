@@ -118,7 +118,9 @@
 				window.location.href = destination;
 			} catch (error) {
 				message.classList.add('is-error');
-				message.textContent = error.message;
+				message.textContent = error.message === 'Failed to fetch'
+					? 'Cannot reach the auction server. Check that the Render service is running.'
+					: error.message;
 			} finally {
 				submit.disabled = false;
 				submit.classList.remove('is-loading');
