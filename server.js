@@ -12,6 +12,7 @@ const socketIO = require('socket.io');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const { MongoClient } = require('mongodb');
+const { v2: cloudinary } = require('cloudinary');
 require('dotenv').config();
 const fs = require('fs');
 const path = require('path');
@@ -28,6 +29,11 @@ app.get('/health', (request, response) => response.json({ status: 'ok' }));
 
 const JWT_SECRET = process.env.JWT_SECRET || 'development-only-change-this-secret';
 const mongoClient = process.env.MONGODB_URI ? new MongoClient(process.env.MONGODB_URI) : null;
+cloudinary.config({
+    cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+    api_key: process.env.CLOUDINARY_API_KEY,
+    api_secret: process.env.CLOUDINARY_API_SECRET
+});
 let database;
 
 async function getDatabase() {
@@ -167,38 +173,18 @@ function getLocalNetworkIp() {
 
 // ==================== MEDIA MANAGEMENT ====================
 
-/**
- * Scans public/uploads for media files mapped by serial number (e.g., 1.png, 2.mp4)
- */
-function getMediaMap(tournamentId = '') {
-    const mediaMap = {};
-    const mediaDirectory = tournamentId ? path.join(uploadsDir, tournamentId) : uploadsDir;
-    if (!fs.existsSync(mediaDirectory)) return mediaMap;
-
-    try {
-        const files = fs.readdirSync(mediaDirectory);
-        files.forEach(file => {
-            if (file.startsWith('.')) return;
-            const ext = path.extname(file).toLowerCase();
-            const basename = path.basename(file, ext);
-            const serial = parseInt(basename, 10);
-            if (!isNaN(serial) && serial > 0) {
-                const isVideo = ['.mp4', '.webm'].includes(ext);
-                const isImage = ['.png', '.jpg', '.jpeg', '.webp', '.gif'].includes(ext);
-                if (isVideo || isImage) {
-                    mediaMap[serial] = {
-                        url: `/uploads/${file}`,
-                        type: isVideo ? 'video' : 'image',
-                        ext: ext,
-                        filename: file
-                    };
-                }
-            }
-        });
-    } catch (e) {
-        console.error("Error reading uploads directory:", e);
-    }
+function getMediaMap() {
     return mediaMap;
+}
+
+function uploadMediaToCloudinary(buffer, options) {
+    return new Promise((resolve, reject) => {
+        const uploadStream = cloudinary.uploader.upload_stream(options, (error, result) => {
+            if (error) reject(error);
+            else resolve(result);
+        });
+        uploadStream.end(buffer);
+    });
 }
 
 // ==================== IN-MEMORY AUCTION STATE ====================
@@ -231,6 +217,7 @@ let soldNumbers = new Set();
 let availableNumbers = [];
 let skippedNumbers = [];
 let currentNumber = null;
+let mediaMap = {};
 
 function createEmptyAuctionState() {
     return {
@@ -243,7 +230,8 @@ function createEmptyAuctionState() {
         soldNumbers: [],
         availableNumbers: [],
         skippedNumbers: [],
-        currentNumber: null
+        currentNumber: null,
+        mediaMap: {}
     };
 }
 
@@ -257,6 +245,7 @@ async function loadAuctionState(tournamentId) {
     saved.soldNumbers = Array.isArray(saved.soldNumbers) ? saved.soldNumbers : [];
     saved.availableNumbers = Array.isArray(saved.availableNumbers) ? saved.availableNumbers : [];
     saved.skippedNumbers = Array.isArray(saved.skippedNumbers) ? saved.skippedNumbers : [];
+    saved.mediaMap = saved.mediaMap && typeof saved.mediaMap === 'object' ? saved.mediaMap : {};
     auctionStates.set(tournamentId, saved);
     return saved;
 }
@@ -273,6 +262,7 @@ function activateAuctionState(tournamentId, state) {
     availableNumbers = state.availableNumbers;
     skippedNumbers = state.skippedNumbers;
     currentNumber = state.currentNumber;
+    mediaMap = state.mediaMap;
 }
 
 async function persistActiveAuctionState() {
@@ -288,6 +278,7 @@ async function persistActiveAuctionState() {
     state.availableNumbers = availableNumbers;
     state.skippedNumbers = skippedNumbers;
     state.currentNumber = currentNumber;
+    state.mediaMap = mediaMap;
     await (await getDatabase()).collection('rooms').updateOne(
         { tournamentId: activeTournamentId },
         { $set: { auctionState: state, updatedAt: new Date() } }
@@ -393,36 +384,67 @@ io.on('connection', async socket => {
     });
 
     // Event: Media upload batch handler
-    socket.on('upload-media-batch', files => {
+    socket.on('upload-media-batch', async files => {
         useRoomState();
         if (!requireAdmin()) return;
-        if (Array.isArray(files) && files.length > 0) {
-            let savedCount = 0;
-            files.forEach(item => {
-                if (item && item.filename && item.buffer) {
-                    const ext = path.extname(item.filename).toLowerCase();
-                    const basename = path.basename(item.filename, ext);
-                    const serial = parseInt(basename, 10);
-                    if (!isNaN(serial) && serial > 0) {
-                        const isVideo = ['.mp4', '.webm'].includes(ext);
-                        const isImage = ['.png', '.jpg', '.jpeg', '.webp', '.gif'].includes(ext);
-                        if (isVideo || isImage) {
-                            const roomUploadsDir = path.join(uploadsDir, tournamentId);
-                            fs.mkdirSync(roomUploadsDir, { recursive: true });
-                            const destPath = path.join(roomUploadsDir, `${serial}${ext}`);
-                            fs.writeFileSync(destPath, Buffer.from(item.buffer));
-                            savedCount++;
-                        }
-                    }
-                }
-            });
-            const updatedMap = getMediaMap(tournamentId);
-            io.to(socketRoom).emit('media-update', updatedMap);
-            socket.emit('message', {
-                text: `📸 Successfully uploaded ${savedCount} profile media file(s)!`,
-                type: 'success'
-            });
+        if (!Array.isArray(files) || files.length === 0) return;
+
+        if (!process.env.CLOUDINARY_CLOUD_NAME || !process.env.CLOUDINARY_API_KEY || !process.env.CLOUDINARY_API_SECRET) {
+            socket.emit('message', { text: 'Cloudinary is not configured on the server.', type: 'error' });
+            return;
         }
+
+        const results = await Promise.allSettled(files.map(async item => {
+            if (!item || !item.filename || !item.buffer) throw new Error('Missing file data');
+
+            const ext = path.extname(item.filename).toLowerCase();
+            const basename = path.basename(item.filename, ext);
+            if (!/^\d+$/.test(basename) || Number(basename) < 1) {
+                throw new Error(`File name must contain only a positive number: ${item.filename}`);
+            }
+
+            const serial = Number(basename);
+            const isVideo = ['.mp4', '.webm', '.mov', '.avi', '.mkv'].includes(ext);
+            const isImage = ['.png', '.jpg', '.jpeg', '.webp', '.gif', '.avif'].includes(ext);
+            if (!isVideo && !isImage) throw new Error(`Unsupported media type: ${item.filename}`);
+
+            const result = await uploadMediaToCloudinary(Buffer.from(item.buffer), {
+                public_id: `npl-auction/${tournamentId}/${serial}`,
+                resource_type: 'auto',
+                type: 'upload',
+                overwrite: true,
+                invalidate: true
+            });
+
+            return {
+                serial,
+                url: result.secure_url,
+                type: isVideo ? 'video' : 'image',
+                ext,
+                filename: `${serial}${ext}`
+            };
+        }));
+
+        let savedCount = 0;
+        const errors = [];
+        results.forEach(result => {
+            if (result.status === 'fulfilled') {
+                mediaMap[result.value.serial] = result.value;
+                savedCount++;
+            } else {
+                errors.push(result.reason.message);
+            }
+        });
+
+        if (savedCount > 0) {
+            await persistActiveAuctionState();
+            io.to(socketRoom).emit('media-update', getMediaMap());
+        }
+
+        socket.emit('message', {
+            text: `${savedCount} profile media file(s) uploaded to Cloudinary${errors.length ? `. ${errors.length} file(s) skipped.` : '.'}`,
+            type: savedCount > 0 ? 'success' : 'error'
+        });
     });
 
     // Event: Setup & Data Import submitted from Admin panel
@@ -449,7 +471,7 @@ io.on('connection', async socket => {
 
         io.to(socketRoom).emit('config-update', { auctionTitle, auctionConfig, teamNames, playerList });
         io.to(socketRoom).emit('update', { teams, soldPlayers: [...soldPlayers] });
-        io.to(socketRoom).emit('media-update', getMediaMap(tournamentId));
+        io.to(socketRoom).emit('media-update', getMediaMap());
         emitNumberUpdate();
         io.to(socketRoom).emit('message', {
             text: "⚙️ Auction setup updated and market reset!",
