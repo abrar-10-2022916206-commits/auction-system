@@ -9,6 +9,7 @@
         content="Live football auction display. Real-time transfer budgets, squads, and bidding updates.">
     <link rel="stylesheet" href="style.css">
     <script src="/socket.io/socket.io.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
 </head>
 
 <body>
@@ -389,12 +390,14 @@
                 jsPDF: { unit: 'mm', format: 'a3', orientation: 'landscape' }
             };
 
-            html2pdf().set(options).from(document.body).save().then(() => {
-                header.style.display = '';
-                downloadBtn.style.display = '';
-                toastContainer.style.display = '';
-                showToast("PDF exported successfully!", "success");
-            });
+            html2pdf().set(options).from(document.body).save()
+                .then(() => showToast("PDF exported successfully!", "success"))
+                .catch(() => showToast("PDF export failed. Please try again.", "error"))
+                .finally(() => {
+                    header.style.display = '';
+                    downloadBtn.style.display = '';
+                    toastContainer.style.display = '';
+                });
         }
 
         function showToast(text, type) {

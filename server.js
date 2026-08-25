@@ -56,7 +56,7 @@ function isValidTournamentId(value) {
 }
 
 function issueToken(room, role) {
-    return jwt.sign({ roomId: room._id.toString(), tournamentId: room.tournamentId, role }, JWT_SECRET, { expiresIn: '12h' });
+    return jwt.sign({ roomId: room._id.toString(), tournamentId: room.tournamentId, role }, JWT_SECRET, { expiresIn: '1h' });
 }
 
 function authenticateRequest(request, response, next) {
@@ -190,34 +190,14 @@ function uploadMediaToCloudinary(buffer, options) {
 // ==================== IN-MEMORY AUCTION STATE ====================
 
 const auctionStates = new Map();
-let activeTournamentId = '';
 
-let auctionTitle = "";
-let auctionConfig = {
-    baseTeamAmount: 1000,
-    basePlayerPrice: 20,
-    minPlayers: 9,
-    maxPlayers: 15
-};
-
-let teamNames = [];
-let playerList = [];
-
-function createTeams() {
-    return teamNames.map(name => ({
+function createTeams(state) {
+    return state.teamNames.map(name => ({
         name,
-        balance: auctionConfig.baseTeamAmount,
+        balance: state.auctionConfig.baseTeamAmount,
         players: []
     }));
 }
-
-let teams = createTeams();
-let soldPlayers = new Set();
-let soldNumbers = new Set();
-let availableNumbers = [];
-let skippedNumbers = [];
-let currentNumber = null;
-let mediaMap = {};
 
 function createEmptyAuctionState() {
     return {
@@ -246,42 +226,22 @@ async function loadAuctionState(tournamentId) {
     saved.availableNumbers = Array.isArray(saved.availableNumbers) ? saved.availableNumbers : [];
     saved.skippedNumbers = Array.isArray(saved.skippedNumbers) ? saved.skippedNumbers : [];
     saved.mediaMap = saved.mediaMap && typeof saved.mediaMap === 'object' ? saved.mediaMap : {};
+    saved.soldPlayers = new Set(saved.soldPlayers);
+    saved.soldNumbers = new Set(saved.soldNumbers);
     auctionStates.set(tournamentId, saved);
     return saved;
 }
 
-function activateAuctionState(tournamentId, state) {
-    activeTournamentId = tournamentId;
-    auctionTitle = state.auctionTitle;
-    auctionConfig = state.auctionConfig;
-    teamNames = state.teamNames;
-    playerList = state.playerList;
-    teams = state.teams;
-    soldPlayers = new Set(state.soldPlayers);
-    soldNumbers = new Set(state.soldNumbers);
-    availableNumbers = state.availableNumbers;
-    skippedNumbers = state.skippedNumbers;
-    currentNumber = state.currentNumber;
-    mediaMap = state.mediaMap;
-}
-
-async function persistActiveAuctionState() {
-    const state = auctionStates.get(activeTournamentId);
+async function persistAuctionState(tournamentId, state) {
     if (!state) return;
-    state.auctionTitle = auctionTitle;
-    state.auctionConfig = auctionConfig;
-    state.teamNames = teamNames;
-    state.playerList = playerList;
-    state.teams = teams;
-    state.soldPlayers = [...soldPlayers];
-    state.soldNumbers = [...soldNumbers];
-    state.availableNumbers = availableNumbers;
-    state.skippedNumbers = skippedNumbers;
-    state.currentNumber = currentNumber;
-    state.mediaMap = mediaMap;
+    const savedState = {
+        ...state,
+        soldPlayers: [...state.soldPlayers],
+        soldNumbers: [...state.soldNumbers]
+    };
     await (await getDatabase()).collection('rooms').updateOne(
-        { tournamentId: activeTournamentId },
-        { $set: { auctionState: state, updatedAt: new Date() } }
+        { tournamentId },
+        { $set: { auctionState: savedState, updatedAt: new Date() } }
     );
 }
 
@@ -296,58 +256,55 @@ function removeNumber(numbers, number) {
     if (index !== -1) numbers.splice(index, 1);
 }
 
-function drawNextNumber() {
-    const candidates = availableNumbers.filter(number => !soldNumbers.has(number));
+function drawNextNumber(state) {
+    const candidates = state.availableNumbers.filter(number => !state.soldNumbers.has(number));
     if (candidates.length > 0) {
-        currentNumber = randomItem(candidates);
-        removeNumber(availableNumbers, currentNumber);
+        state.currentNumber = randomItem(candidates);
+        removeNumber(state.availableNumbers, state.currentNumber);
     } else {
-        const unsoldSkipped = skippedNumbers.filter(number => !soldNumbers.has(number));
-        currentNumber = unsoldSkipped.length > 0 ? randomItem(unsoldSkipped) : null;
+        const unsoldSkipped = state.skippedNumbers.filter(number => !state.soldNumbers.has(number));
+        state.currentNumber = unsoldSkipped.length > 0 ? randomItem(unsoldSkipped) : null;
     }
 }
 
-function emitNumberUpdate() {
-    io.to(`auction:${activeTournamentId}`).emit('number-update', {
-        number: currentNumber,
-        phase: availableNumbers.some(number => !soldNumbers.has(number)) ? 'main' : 'skipped'
+function emitNumberUpdate(tournamentId, state) {
+    io.to(`auction:${tournamentId}`).emit('number-update', {
+        number: state.currentNumber,
+        phase: state.availableNumbers.some(number => !state.soldNumbers.has(number)) ? 'main' : 'skipped'
     });
 }
 
-function completeNumber(number, isSkipped = false) {
-    const total = playerList.length;
+function completeNumber(state, number, isSkipped = false) {
+    const total = state.playerList.length;
     if (!Number.isInteger(number) || number < 1 || number > total) return;
 
-    removeNumber(availableNumbers, number);
-    removeNumber(skippedNumbers, number);
-    if (isSkipped) skippedNumbers.push(number);
-    else soldNumbers.add(number);
+    removeNumber(state.availableNumbers, number);
+    removeNumber(state.skippedNumbers, number);
+    if (isSkipped) state.skippedNumbers.push(number);
+    else state.soldNumbers.add(number);
 
-    if (currentNumber !== null && currentNumber !== number && !soldNumbers.has(currentNumber) && !skippedNumbers.includes(currentNumber)) {
-        availableNumbers.push(currentNumber);
+    if (state.currentNumber !== null && state.currentNumber !== number && !state.soldNumbers.has(state.currentNumber) && !state.skippedNumbers.includes(state.currentNumber)) {
+        state.availableNumbers.push(state.currentNumber);
     }
 
-    drawNextNumber();
-    emitNumberUpdate();
+    drawNextNumber(state);
 }
 
-function resetNumberState() {
-    soldNumbers = new Set();
-    availableNumbers = Array.from({ length: playerList.length }, (_, index) => index + 1);
-    skippedNumbers = [];
-    currentNumber = null;
-    if (playerList.length > 0) {
-        drawNextNumber();
+function resetNumberState(state) {
+    state.soldNumbers = new Set();
+    state.availableNumbers = Array.from({ length: state.playerList.length }, (_, index) => index + 1);
+    state.skippedNumbers = [];
+    state.currentNumber = null;
+    if (state.playerList.length > 0) {
+        drawNextNumber(state);
     }
 }
 
-function resetAuctionState() {
-    teams = createTeams();
-    soldPlayers = new Set();
-    resetNumberState();
+function resetAuctionState(state) {
+    state.teams = createTeams(state);
+    state.soldPlayers = new Set();
+    resetNumberState(state);
 }
-
-resetNumberState();
 
 // ==================== SOCKET REAL-TIME EVENTS ====================
 
@@ -367,8 +324,6 @@ io.on('connection', async socket => {
     const socketRoom = `auction:${tournamentId}`;
     socket.join(socketRoom);
     const roomState = await loadAuctionState(tournamentId);
-    activateAuctionState(tournamentId, roomState);
-    const useRoomState = () => activateAuctionState(tournamentId, roomState);
     const requireAdmin = () => {
         if (socket.user.role === 'admin') return true;
         socket.emit('message', { text: 'Admin access is required for this action.', type: 'error' });
@@ -376,17 +331,16 @@ io.on('connection', async socket => {
     };
 
     // Send initial configuration, state, and media map on connection
-    socket.emit('config-update', { auctionTitle, auctionConfig, teamNames, playerList });
-    socket.emit('update', { teams, soldPlayers: [...soldPlayers] });
+    socket.emit('config-update', { auctionTitle: roomState.auctionTitle, auctionConfig: roomState.auctionConfig, teamNames: roomState.teamNames, playerList: roomState.playerList });
+    socket.emit('update', { teams: roomState.teams, soldPlayers: [...roomState.soldPlayers] });
     socket.emit('media-update', getMediaMap(roomState));
     socket.emit('number-update', {
-        number: currentNumber,
-        phase: availableNumbers.some(number => !soldNumbers.has(number)) ? 'main' : 'skipped'
+        number: roomState.currentNumber,
+        phase: roomState.availableNumbers.some(number => !roomState.soldNumbers.has(number)) ? 'main' : 'skipped'
     });
 
     // Event: Media upload batch handler
     socket.on('upload-media-batch', async files => {
-        useRoomState();
         if (!requireAdmin()) return;
         if (!Array.isArray(files) || files.length === 0) return;
 
@@ -446,90 +400,88 @@ io.on('connection', async socket => {
         }
 
         socket.emit('message', {
-            text: `${savedCount} profile media file(s) uploaded to Cloudinary${errors.length ? `. ${errors.length} file(s) skipped.` : '.'}`,
+            text: `${savedCount} profile media file(s) uploaded to RoomMediaStorage${errors.length ? `. ${errors.length} file(s) skipped.` : '.'}`,
             type: savedCount > 0 ? 'success' : 'error'
         });
     });
 
     // Event: Setup & Data Import submitted from Admin panel
     socket.on('setup-auction', data => {
-        useRoomState();
         if (!requireAdmin()) return;
         if (data.config && typeof data.config === 'object') {
             const { baseTeamAmount, basePlayerPrice, minPlayers, maxPlayers } = data.config;
-            if (Number(baseTeamAmount) > 0) auctionConfig.baseTeamAmount = Number(baseTeamAmount);
-            if (Number(basePlayerPrice) > 0) auctionConfig.basePlayerPrice = Number(basePlayerPrice);
-            if (Number(minPlayers) > 0) auctionConfig.minPlayers = Number(minPlayers);
-            if (Number(maxPlayers) > 0) auctionConfig.maxPlayers = Number(maxPlayers);
+            if (Number(baseTeamAmount) > 0) roomState.auctionConfig.baseTeamAmount = Number(baseTeamAmount);
+            if (Number(basePlayerPrice) > 0) roomState.auctionConfig.basePlayerPrice = Number(basePlayerPrice);
+            if (Number(minPlayers) > 0) roomState.auctionConfig.minPlayers = Number(minPlayers);
+            if (Number(maxPlayers) > 0) roomState.auctionConfig.maxPlayers = Number(maxPlayers);
         }
 
         if (Array.isArray(data.teamNames)) {
-            teamNames = data.teamNames.map(t => String(t).trim()).filter(Boolean);
+            roomState.teamNames = data.teamNames.map(t => String(t).trim()).filter(Boolean);
         }
 
         if (Array.isArray(data.playerList)) {
-            playerList = data.playerList.map(p => String(p).trim()).filter(Boolean);
+            roomState.playerList = data.playerList.map(p => String(p).trim()).filter(Boolean);
         }
 
-        resetAuctionState();
+        resetAuctionState(roomState);
 
-        io.to(socketRoom).emit('config-update', { auctionTitle, auctionConfig, teamNames, playerList });
-        io.to(socketRoom).emit('update', { teams, soldPlayers: [...soldPlayers] });
+        io.to(socketRoom).emit('config-update', { auctionTitle: roomState.auctionTitle, auctionConfig: roomState.auctionConfig, teamNames: roomState.teamNames, playerList: roomState.playerList });
+        io.to(socketRoom).emit('update', { teams: roomState.teams, soldPlayers: [...roomState.soldPlayers] });
         io.to(socketRoom).emit('media-update', getMediaMap(roomState));
-        emitNumberUpdate();
+        emitNumberUpdate(tournamentId, roomState);
         io.to(socketRoom).emit('message', {
             text: "⚙️ Auction setup updated and market reset!",
             type: "info"
         });
-        persistActiveAuctionState().catch(error => console.error(`Auction state save failed: ${error.message}`));
+        persistAuctionState(tournamentId, roomState).catch(error => console.error(`Auction state save failed: ${error.message}`));
     });
 
     socket.on('free-claim', data => {
-        useRoomState();
         if (!requireAdmin()) return;
         const teamIndex = parseInt(data.teamIndex);
         const playerName = data.player;
         const playerSerial = parseInt(data.serial, 10);
 
-        if (isNaN(teamIndex) || teamIndex < 0 || teamIndex >= teams.length) {
+        if (isNaN(teamIndex) || teamIndex < 0 || teamIndex >= roomState.teams.length) {
             socket.emit('message', { text: "Invalid team selection.", type: "error" });
             return;
         }
 
-        if (soldPlayers.has(playerName)) {
+        if (roomState.soldPlayers.has(playerName)) {
             socket.emit('message', { text: `${playerName} has already been acquired.`, type: "error" });
             return;
         }
 
-        const team = teams[teamIndex];
+        const team = roomState.teams[teamIndex];
         team.players.push({ name: playerName, bid: 0 });
-        soldPlayers.add(playerName);
-        completeNumber(playerSerial);
+        roomState.soldPlayers.add(playerName);
+        completeNumber(roomState, playerSerial);
+        emitNumberUpdate(tournamentId, roomState);
 
-        io.to(socketRoom).emit('update', { teams, soldPlayers: [...soldPlayers] });
+        io.to(socketRoom).emit('update', { teams: roomState.teams, soldPlayers: [...roomState.soldPlayers] });
         io.to(socketRoom).emit('message', {
             text: `⚽ ${playerName} drafted for FREE by ${team.name}! 📝`,
             type: "success"
         });
-        persistActiveAuctionState().catch(error => console.error(`Auction state save failed: ${error.message}`));
+        persistAuctionState(tournamentId, roomState).catch(error => console.error(`Auction state save failed: ${error.message}`));
     });
 
     socket.on('bid', data => {
-        useRoomState();
         if (!requireAdmin()) return;
         const teamIndex = parseInt(data.teamIndex);
         const bidAmount = parseInt(data.bid);
         const playerName = data.player;
         const playerNumber = parseInt(data.serial, 10);
 
-        if (isNaN(teamIndex) || teamIndex < 0 || teamIndex >= teams.length) {
+        if (isNaN(teamIndex) || teamIndex < 0 || teamIndex >= roomState.teams.length) {
             socket.emit('message', { text: "Invalid team selection.", type: "error" });
             return;
         }
 
-        if (isNaN(bidAmount) || bidAmount < auctionConfig.basePlayerPrice) {
+        if (isNaN(bidAmount) || bidAmount < roomState.auctionConfig.basePlayerPrice) {
             socket.emit('message', {
-                text: `Minimum bid is ${auctionConfig.basePlayerPrice}. Please enter a valid amount.`,
+                text: `Minimum bid is ${roomState.auctionConfig.basePlayerPrice}. Please enter a valid amount.`,
                 type: "error"
             });
             return;
@@ -540,7 +492,7 @@ io.on('connection', async socket => {
             return;
         }
 
-        if (soldPlayers.has(playerName)) {
+        if (roomState.soldPlayers.has(playerName)) {
             socket.emit('message', {
                 text: `${playerName} has already been sold.`,
                 type: "error"
@@ -548,19 +500,19 @@ io.on('connection', async socket => {
             return;
         }
 
-        const team = teams[teamIndex];
+        const team = roomState.teams[teamIndex];
 
-        if (team.players.length >= auctionConfig.maxPlayers) {
+        if (team.players.length >= roomState.auctionConfig.maxPlayers) {
             socket.emit('message', {
-                text: `${team.name} has reached the maximum squad size (${auctionConfig.maxPlayers}).`,
+                text: `${team.name} has reached the maximum squad size (${roomState.auctionConfig.maxPlayers}).`,
                 type: "error"
             });
             return;
         }
 
         const currentPlayers = team.players.length;
-        const remainingRequired = Math.max(0, auctionConfig.minPlayers - (currentPlayers + 1));
-        const minimumKeep = remainingRequired * auctionConfig.basePlayerPrice;
+        const remainingRequired = Math.max(0, roomState.auctionConfig.minPlayers - (currentPlayers + 1));
+        const minimumKeep = remainingRequired * roomState.auctionConfig.basePlayerPrice;
         const maxBid = team.balance - minimumKeep;
 
         if (bidAmount > maxBid) {
@@ -581,19 +533,19 @@ io.on('connection', async socket => {
 
         team.balance -= bidAmount;
         team.players.push({ name: playerName, bid: bidAmount });
-        soldPlayers.add(playerName);
-        completeNumber(playerNumber);
+        roomState.soldPlayers.add(playerName);
+        completeNumber(roomState, playerNumber);
+        emitNumberUpdate(tournamentId, roomState);
 
-        io.to(socketRoom).emit('update', { teams, soldPlayers: [...soldPlayers] });
+        io.to(socketRoom).emit('update', { teams: roomState.teams, soldPlayers: [...roomState.soldPlayers] });
         io.to(socketRoom).emit('message', {
             text: `⚽ ${playerName} signed by ${team.name} for ${bidAmount}! 📝`,
             type: "success"
         });
-        persistActiveAuctionState().catch(error => console.error(`Auction state save failed: ${error.message}`));
+        persistAuctionState(tournamentId, roomState).catch(error => console.error(`Auction state save failed: ${error.message}`));
     });
 
     socket.on('sell-player', data => {
-        useRoomState();
         if (!requireAdmin()) return;
         const playerName = data && data.player;
         const buyerIndex = parseInt(data && data.buyerIndex, 10);
@@ -607,15 +559,15 @@ io.on('connection', async socket => {
             return;
         }
 
-        if (price < auctionConfig.basePlayerPrice) {
+        if (price < roomState.auctionConfig.basePlayerPrice) {
             socket.emit('message', {
-                text: `Sell price must be at least ${auctionConfig.basePlayerPrice}.`,
+                text: `Sell price must be at least ${roomState.auctionConfig.basePlayerPrice}.`,
                 type: "error"
             });
             return;
         }
 
-        if (buyerIndex < 0 || buyerIndex >= teams.length) {
+        if (buyerIndex < 0 || buyerIndex >= roomState.teams.length) {
             socket.emit('message', {
                 text: "Invalid buyer team.",
                 type: "error"
@@ -623,7 +575,7 @@ io.on('connection', async socket => {
             return;
         }
 
-        const sellerIndex = teams.findIndex(team => team.players.some(player => player.name === playerName));
+        const sellerIndex = roomState.teams.findIndex(team => team.players.some(player => player.name === playerName));
         if (sellerIndex === -1) {
             socket.emit('message', {
                 text: `${playerName} is not currently assigned to any team.`,
@@ -640,8 +592,8 @@ io.on('connection', async socket => {
             return;
         }
 
-        const seller = teams[sellerIndex];
-        const buyer = teams[buyerIndex];
+        const seller = roomState.teams[sellerIndex];
+        const buyer = roomState.teams[buyerIndex];
         const playerIndex = seller.players.findIndex(player => player.name === playerName);
         const player = seller.players[playerIndex];
 
@@ -653,16 +605,16 @@ io.on('connection', async socket => {
             return;
         }
 
-        if (buyer.players.length >= auctionConfig.maxPlayers) {
+        if (buyer.players.length >= roomState.auctionConfig.maxPlayers) {
             socket.emit('message', {
-                text: `${buyer.name} has reached the maximum squad size (${auctionConfig.maxPlayers}).`,
+                text: `${buyer.name} has reached the maximum squad size (${roomState.auctionConfig.maxPlayers}).`,
                 type: "error"
             });
             return;
         }
 
-        const remainingRequired = Math.max(0, auctionConfig.minPlayers - (buyer.players.length + 1));
-        const minimumKeep = remainingRequired * auctionConfig.basePlayerPrice;
+        const remainingRequired = Math.max(0, roomState.auctionConfig.minPlayers - (buyer.players.length + 1));
+        const minimumKeep = remainingRequired * roomState.auctionConfig.basePlayerPrice;
         const maxSpend = buyer.balance - minimumKeep;
 
         if (price > buyer.balance) {
@@ -687,18 +639,17 @@ io.on('connection', async socket => {
         player.bid = price;
         buyer.balance -= price;
         buyer.players.push(player);
-        soldPlayers.add(playerName);
+        roomState.soldPlayers.add(playerName);
 
-        io.to(socketRoom).emit('update', { teams, soldPlayers: [...soldPlayers] });
+        io.to(socketRoom).emit('update', { teams: roomState.teams, soldPlayers: [...roomState.soldPlayers] });
         io.to(socketRoom).emit('message', {
             text: `🔄 ${playerName} transferred from ${seller.name} to ${buyer.name} for ${price}! 📝`,
             type: "success"
         });
-        persistActiveAuctionState().catch(error => console.error(`Auction state save failed: ${error.message}`));
+        persistAuctionState(tournamentId, roomState).catch(error => console.error(`Auction state save failed: ${error.message}`));
     });
 
     socket.on('release-player', data => {
-        useRoomState();
         if (!requireAdmin()) return;
         const playerName = data && data.player;
         const playerSerial = data && data.serial;
@@ -708,7 +659,7 @@ io.on('connection', async socket => {
             return;
         }
 
-        const ownerIndex = teams.findIndex(team => team.players.some(p => p.name === playerName));
+        const ownerIndex = roomState.teams.findIndex(team => team.players.some(p => p.name === playerName));
         if (ownerIndex === -1) {
             socket.emit('message', {
                 text: `${playerName} is not currently assigned to any team.`,
@@ -717,7 +668,7 @@ io.on('connection', async socket => {
             return;
         }
 
-        const owner = teams[ownerIndex];
+        const owner = roomState.teams[ownerIndex];
         const playerIndex = owner.players.findIndex(p => p.name === playerName);
         const player = owner.players[playerIndex];
 
@@ -726,49 +677,47 @@ io.on('connection', async socket => {
         owner.players.splice(playerIndex, 1);
         owner.balance += originalCost;
 
-        soldPlayers.delete(playerName);
-        soldNumbers.delete(playerSerial);
-        if (Number.isInteger(playerSerial) && playerSerial >= 1 && playerSerial <= playerList.length && playerSerial !== currentNumber && !availableNumbers.includes(playerSerial)) {
-            removeNumber(skippedNumbers, playerSerial);
-            availableNumbers.push(playerSerial);
+        roomState.soldPlayers.delete(playerName);
+        roomState.soldNumbers.delete(playerSerial);
+        if (Number.isInteger(playerSerial) && playerSerial >= 1 && playerSerial <= roomState.playerList.length && playerSerial !== roomState.currentNumber && !roomState.availableNumbers.includes(playerSerial)) {
+            removeNumber(roomState.skippedNumbers, playerSerial);
+            roomState.availableNumbers.push(playerSerial);
         }
 
-        io.to(socketRoom).emit('update', { teams, soldPlayers: [...soldPlayers] });
+        io.to(socketRoom).emit('update', { teams: roomState.teams, soldPlayers: [...roomState.soldPlayers] });
         io.to(socketRoom).emit('message', {
             text: `🔓 ${playerName} released by ${owner.name}. Refund: ${originalCost} returned to budget.`,
             type: "info"
         });
-        persistActiveAuctionState().catch(error => console.error(`Auction state save failed: ${error.message}`));
+        persistAuctionState(tournamentId, roomState).catch(error => console.error(`Auction state save failed: ${error.message}`));
     });
 
     socket.on('roll-number', () => {
-        useRoomState();
         if (!requireAdmin()) return;
-        drawNextNumber();
-        emitNumberUpdate();
-        persistActiveAuctionState().catch(error => console.error(`Auction state save failed: ${error.message}`));
+        drawNextNumber(roomState);
+        emitNumberUpdate(tournamentId, roomState);
+        persistAuctionState(tournamentId, roomState).catch(error => console.error(`Auction state save failed: ${error.message}`));
     });
 
     socket.on('mark-unsold', () => {
-        useRoomState();
         if (!requireAdmin()) return;
-        if (currentNumber !== null) {
-            completeNumber(currentNumber, true);
-            persistActiveAuctionState().catch(error => console.error(`Auction state save failed: ${error.message}`));
+        if (roomState.currentNumber !== null) {
+            completeNumber(roomState, roomState.currentNumber, true);
+            emitNumberUpdate(tournamentId, roomState);
+            persistAuctionState(tournamentId, roomState).catch(error => console.error(`Auction state save failed: ${error.message}`));
         }
     });
 
     socket.on('reset', () => {
-        useRoomState();
         if (!requireAdmin()) return;
-        resetAuctionState();
-        io.to(socketRoom).emit('update', { teams, soldPlayers: [...soldPlayers] });
-        emitNumberUpdate();
+        resetAuctionState(roomState);
+        io.to(socketRoom).emit('update', { teams: roomState.teams, soldPlayers: [...roomState.soldPlayers] });
+        emitNumberUpdate(tournamentId, roomState);
         io.to(socketRoom).emit('message', {
             text: "🔄 Auction has been reset to initial state.",
             type: "info"
         });
-        persistActiveAuctionState().catch(error => console.error(`Auction state save failed: ${error.message}`));
+        persistAuctionState(tournamentId, roomState).catch(error => console.error(`Auction state save failed: ${error.message}`));
     });
 });
 
