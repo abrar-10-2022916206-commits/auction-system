@@ -782,7 +782,7 @@ getDatabase()
             console.log(`Local Network: http://${lanIp}:${PORT}`);
             console.log(`Admin Panel: http://${lanIp}:${PORT}/TransferPanel.html`);
             console.log(`Live Display: http://${lanIp}:${PORT}/display.html`);
-            console.log(`Player Profile: http://${lanIp}:${PORT}/playerProfileShowing.html`);
+            console.log(`Player Profile: http://${lanIp}:${PORT}/playerProfile.html`);
         });
     })
     .catch(error => {
