@@ -85,6 +85,7 @@ app.post('/api/auth/register', async (request, response) => {
             tournamentId: normalizedId,
             passwordHash: await bcrypt.hash(password, 12),
             title: String(title).trim(),
+            auctionState: createEmptyAuctionState(),
             createdAt: new Date()
         };
         const result = await rooms.insertOne(room);
@@ -169,12 +170,13 @@ function getLocalNetworkIp() {
 /**
  * Scans public/uploads for media files mapped by serial number (e.g., 1.png, 2.mp4)
  */
-function getMediaMap() {
+function getMediaMap(tournamentId = '') {
     const mediaMap = {};
-    if (!fs.existsSync(uploadsDir)) return mediaMap;
+    const mediaDirectory = tournamentId ? path.join(uploadsDir, tournamentId) : uploadsDir;
+    if (!fs.existsSync(mediaDirectory)) return mediaMap;
 
     try {
-        const files = fs.readdirSync(uploadsDir);
+        const files = fs.readdirSync(mediaDirectory);
         files.forEach(file => {
             if (file.startsWith('.')) return;
             const ext = path.extname(file).toLowerCase();
@@ -200,6 +202,9 @@ function getMediaMap() {
 }
 
 // ==================== IN-MEMORY AUCTION STATE ====================
+
+const auctionStates = new Map();
+let activeTournamentId = '';
 
 let auctionTitle = "";
 let auctionConfig = {
@@ -227,6 +232,67 @@ let availableNumbers = [];
 let skippedNumbers = [];
 let currentNumber = null;
 
+function createEmptyAuctionState() {
+    return {
+        auctionTitle: '',
+        auctionConfig: { baseTeamAmount: 1000, basePlayerPrice: 20, minPlayers: 9, maxPlayers: 15 },
+        teamNames: [],
+        playerList: [],
+        teams: [],
+        soldPlayers: [],
+        soldNumbers: [],
+        availableNumbers: [],
+        skippedNumbers: [],
+        currentNumber: null
+    };
+}
+
+async function loadAuctionState(tournamentId) {
+    if (auctionStates.has(tournamentId)) return auctionStates.get(tournamentId);
+    const room = await (await getDatabase()).collection('rooms').findOne({ tournamentId }, { projection: { auctionState: 1 } });
+    const saved = room && room.auctionState ? room.auctionState : createEmptyAuctionState();
+    saved.teams = Array.isArray(saved.teams) ? saved.teams : [];
+    saved.soldPlayers = Array.isArray(saved.soldPlayers) ? saved.soldPlayers : [];
+    saved.soldNumbers = Array.isArray(saved.soldNumbers) ? saved.soldNumbers : [];
+    saved.availableNumbers = Array.isArray(saved.availableNumbers) ? saved.availableNumbers : [];
+    saved.skippedNumbers = Array.isArray(saved.skippedNumbers) ? saved.skippedNumbers : [];
+    auctionStates.set(tournamentId, saved);
+    return saved;
+}
+
+function activateAuctionState(tournamentId, state) {
+    activeTournamentId = tournamentId;
+    auctionTitle = state.auctionTitle;
+    auctionConfig = state.auctionConfig;
+    teamNames = state.teamNames;
+    playerList = state.playerList;
+    teams = state.teams;
+    soldPlayers = new Set(state.soldPlayers);
+    soldNumbers = new Set(state.soldNumbers);
+    availableNumbers = state.availableNumbers;
+    skippedNumbers = state.skippedNumbers;
+    currentNumber = state.currentNumber;
+}
+
+async function persistActiveAuctionState() {
+    const state = auctionStates.get(activeTournamentId);
+    if (!state) return;
+    state.auctionTitle = auctionTitle;
+    state.auctionConfig = auctionConfig;
+    state.teamNames = teamNames;
+    state.playerList = playerList;
+    state.teams = teams;
+    state.soldPlayers = [...soldPlayers];
+    state.soldNumbers = [...soldNumbers];
+    state.availableNumbers = availableNumbers;
+    state.skippedNumbers = skippedNumbers;
+    state.currentNumber = currentNumber;
+    await (await getDatabase()).collection('rooms').updateOne(
+        { tournamentId: activeTournamentId },
+        { $set: { auctionState: state, updatedAt: new Date() } }
+    );
+}
+
 // ==================== RANDOM NUMBER DRAWING HELPERS ====================
 
 function randomItem(items) {
@@ -250,7 +316,7 @@ function drawNextNumber() {
 }
 
 function emitNumberUpdate() {
-    io.emit('number-update', {
+    io.to(`auction:${activeTournamentId}`).emit('number-update', {
         number: currentNumber,
         phase: availableNumbers.some(number => !soldNumbers.has(number)) ? 'main' : 'skipped'
     });
@@ -304,7 +370,12 @@ io.use((socket, next) => {
     }
 });
 
-io.on('connection', socket => {
+io.on('connection', async socket => {
+    const tournamentId = socket.user.tournamentId;
+    const socketRoom = `auction:${tournamentId}`;
+    socket.join(socketRoom);
+    activateAuctionState(tournamentId, await loadAuctionState(tournamentId));
+    const useRoomState = () => activateAuctionState(tournamentId, auctionStates.get(tournamentId));
     const requireAdmin = () => {
         if (socket.user.role === 'admin') return true;
         socket.emit('message', { text: 'Admin access is required for this action.', type: 'error' });
@@ -314,7 +385,7 @@ io.on('connection', socket => {
     // Send initial configuration, state, and media map on connection
     socket.emit('config-update', { auctionTitle, auctionConfig, teamNames, playerList });
     socket.emit('update', { teams, soldPlayers: [...soldPlayers] });
-    socket.emit('media-update', getMediaMap());
+    socket.emit('media-update', getMediaMap(tournamentId));
     socket.emit('number-update', {
         number: currentNumber,
         phase: availableNumbers.some(number => !soldNumbers.has(number)) ? 'main' : 'skipped'
@@ -322,6 +393,7 @@ io.on('connection', socket => {
 
     // Event: Media upload batch handler
     socket.on('upload-media-batch', files => {
+        useRoomState();
         if (!requireAdmin()) return;
         if (Array.isArray(files) && files.length > 0) {
             let savedCount = 0;
@@ -334,15 +406,17 @@ io.on('connection', socket => {
                         const isVideo = ['.mp4', '.webm'].includes(ext);
                         const isImage = ['.png', '.jpg', '.jpeg', '.webp', '.gif'].includes(ext);
                         if (isVideo || isImage) {
-                            const destPath = path.join(uploadsDir, `${serial}${ext}`);
+                            const roomUploadsDir = path.join(uploadsDir, tournamentId);
+                            fs.mkdirSync(roomUploadsDir, { recursive: true });
+                            const destPath = path.join(roomUploadsDir, `${serial}${ext}`);
                             fs.writeFileSync(destPath, Buffer.from(item.buffer));
                             savedCount++;
                         }
                     }
                 }
             });
-            const updatedMap = getMediaMap();
-            io.emit('media-update', updatedMap);
+            const updatedMap = getMediaMap(tournamentId);
+            io.to(socketRoom).emit('media-update', updatedMap);
             socket.emit('message', {
                 text: `📸 Successfully uploaded ${savedCount} profile media file(s)!`,
                 type: 'success'
@@ -352,6 +426,7 @@ io.on('connection', socket => {
 
     // Event: Setup & Data Import submitted from Admin panel
     socket.on('setup-auction', data => {
+        useRoomState();
         if (!requireAdmin()) return;
         if (typeof data.title === 'string') {
             auctionTitle = data.title.trim();
@@ -375,17 +450,19 @@ io.on('connection', socket => {
 
         resetAuctionState();
 
-        io.emit('config-update', { auctionTitle, auctionConfig, teamNames, playerList });
-        io.emit('update', { teams, soldPlayers: [...soldPlayers] });
-        io.emit('media-update', getMediaMap());
+        io.to(socketRoom).emit('config-update', { auctionTitle, auctionConfig, teamNames, playerList });
+        io.to(socketRoom).emit('update', { teams, soldPlayers: [...soldPlayers] });
+        io.to(socketRoom).emit('media-update', getMediaMap(tournamentId));
         emitNumberUpdate();
-        io.emit('message', {
+        io.to(socketRoom).emit('message', {
             text: "⚙️ Auction setup updated and market reset!",
             type: "info"
         });
+        persistActiveAuctionState().catch(error => console.error(`Auction state save failed: ${error.message}`));
     });
 
     socket.on('free-claim', data => {
+        useRoomState();
         if (!requireAdmin()) return;
         const teamIndex = parseInt(data.teamIndex);
         const playerName = data.player;
@@ -406,14 +483,16 @@ io.on('connection', socket => {
         soldPlayers.add(playerName);
         completeNumber(playerSerial);
 
-        io.emit('update', { teams, soldPlayers: [...soldPlayers] });
-        io.emit('message', {
+        io.to(socketRoom).emit('update', { teams, soldPlayers: [...soldPlayers] });
+        io.to(socketRoom).emit('message', {
             text: `⚽ ${playerName} drafted for FREE by ${team.name}! 📝`,
             type: "success"
         });
+        persistActiveAuctionState().catch(error => console.error(`Auction state save failed: ${error.message}`));
     });
 
     socket.on('bid', data => {
+        useRoomState();
         if (!requireAdmin()) return;
         const teamIndex = parseInt(data.teamIndex);
         const bidAmount = parseInt(data.bid);
@@ -482,14 +561,16 @@ io.on('connection', socket => {
         soldPlayers.add(playerName);
         completeNumber(playerNumber);
 
-        io.emit('update', { teams, soldPlayers: [...soldPlayers] });
-        io.emit('message', {
+        io.to(socketRoom).emit('update', { teams, soldPlayers: [...soldPlayers] });
+        io.to(socketRoom).emit('message', {
             text: `⚽ ${playerName} signed by ${team.name} for ${bidAmount}! 📝`,
             type: "success"
         });
+        persistActiveAuctionState().catch(error => console.error(`Auction state save failed: ${error.message}`));
     });
 
     socket.on('sell-player', data => {
+        useRoomState();
         if (!requireAdmin()) return;
         const playerName = data && data.player;
         const buyerIndex = parseInt(data && data.buyerIndex, 10);
@@ -585,14 +666,16 @@ io.on('connection', socket => {
         buyer.players.push(player);
         soldPlayers.add(playerName);
 
-        io.emit('update', { teams, soldPlayers: [...soldPlayers] });
-        io.emit('message', {
+        io.to(socketRoom).emit('update', { teams, soldPlayers: [...soldPlayers] });
+        io.to(socketRoom).emit('message', {
             text: `🔄 ${playerName} transferred from ${seller.name} to ${buyer.name} for ${price}! 📝`,
             type: "success"
         });
+        persistActiveAuctionState().catch(error => console.error(`Auction state save failed: ${error.message}`));
     });
 
     socket.on('release-player', data => {
+        useRoomState();
         if (!requireAdmin()) return;
         const playerName = data && data.player;
         const playerSerial = data && data.serial;
@@ -627,33 +710,42 @@ io.on('connection', socket => {
             availableNumbers.push(playerSerial);
         }
 
-        io.emit('update', { teams, soldPlayers: [...soldPlayers] });
-        io.emit('message', {
+        io.to(socketRoom).emit('update', { teams, soldPlayers: [...soldPlayers] });
+        io.to(socketRoom).emit('message', {
             text: `🔓 ${playerName} released by ${owner.name}. Refund: ${originalCost} returned to budget.`,
             type: "info"
         });
+        persistActiveAuctionState().catch(error => console.error(`Auction state save failed: ${error.message}`));
     });
 
     socket.on('roll-number', () => {
+        useRoomState();
         if (!requireAdmin()) return;
         drawNextNumber();
         emitNumberUpdate();
+        persistActiveAuctionState().catch(error => console.error(`Auction state save failed: ${error.message}`));
     });
 
     socket.on('mark-unsold', () => {
+        useRoomState();
         if (!requireAdmin()) return;
-        if (currentNumber !== null) completeNumber(currentNumber, true);
+        if (currentNumber !== null) {
+            completeNumber(currentNumber, true);
+            persistActiveAuctionState().catch(error => console.error(`Auction state save failed: ${error.message}`));
+        }
     });
 
     socket.on('reset', () => {
+        useRoomState();
         if (!requireAdmin()) return;
         resetAuctionState();
-        io.emit('update', { teams, soldPlayers: [...soldPlayers] });
+        io.to(socketRoom).emit('update', { teams, soldPlayers: [...soldPlayers] });
         emitNumberUpdate();
-        io.emit('message', {
+        io.to(socketRoom).emit('message', {
             text: "🔄 Auction has been reset to initial state.",
             type: "info"
         });
+        persistActiveAuctionState().catch(error => console.error(`Auction state save failed: ${error.message}`));
     });
 });
 
