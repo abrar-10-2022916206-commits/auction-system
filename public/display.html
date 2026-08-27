@@ -45,8 +45,8 @@
         </div>
     </header>
 
-    <!-- Developer Credit -->
-    <div class="developer-credit-corner">© Developed by ABRAR1552</div>
+    <!-- Admin Contact -->
+    <a class="developer-credit-corner" href="mailto:abrarrafi1552@gmail.com">Contact with Admin</a>
 
     <!-- Activity Banner & Random Serial Display -->
     <div class="display-summary-row">
@@ -199,93 +199,6 @@
         }
 
         /**
-         * Synthesizes a dynamic referee whistle sound effect using Web Audio API
-         */
-        function playWhistleSound() {
-            try {
-                const ctx = new (window.AudioContext || window.webkitAudioContext)();
-
-                const startTime = ctx.currentTime;
-                const masterGain = ctx.createGain();
-                const compressor = ctx.createDynamicsCompressor();
-                const stereo = ctx.createStereoPanner();
-                const whistleLength = 0.9;
-
-                masterGain.gain.setValueAtTime(0.0001, startTime);
-                masterGain.gain.exponentialRampToValueAtTime(0.8, startTime + 0.025);
-                masterGain.gain.exponentialRampToValueAtTime(0.0001, startTime + whistleLength);
-                compressor.threshold.value = -18;
-                compressor.knee.value = 14;
-                compressor.ratio.value = 8;
-                compressor.attack.value = 0.003;
-                compressor.release.value = 0.12;
-                stereo.pan.setValueAtTime(-0.2, startTime);
-                stereo.pan.linearRampToValueAtTime(0.2, startTime + whistleLength);
-                masterGain.connect(compressor);
-                compressor.connect(stereo);
-                stereo.connect(ctx.destination);
-
-                const noiseBuffer = ctx.createBuffer(1, ctx.sampleRate * whistleLength, ctx.sampleRate);
-                const noiseData = noiseBuffer.getChannelData(0);
-                for (let index = 0; index < noiseData.length; index++) {
-                    noiseData[index] = (Math.random() * 2 - 1) * (1 - index / noiseData.length);
-                }
-
-                const breath = ctx.createBufferSource();
-                const breathFilter = ctx.createBiquadFilter();
-                const breathGain = ctx.createGain();
-                breath.buffer = noiseBuffer;
-                breathFilter.type = 'bandpass';
-                breathFilter.frequency.setValueAtTime(2800, startTime);
-                breathFilter.frequency.exponentialRampToValueAtTime(4200, startTime + whistleLength);
-                breathFilter.Q.value = 2.5;
-                breathGain.gain.setValueAtTime(0.0001, startTime);
-                breathGain.gain.exponentialRampToValueAtTime(0.16, startTime + 0.04);
-                breathGain.gain.exponentialRampToValueAtTime(0.0001, startTime + whistleLength);
-                breath.connect(breathFilter);
-                breathFilter.connect(breathGain);
-                breathGain.connect(masterGain);
-                breath.start(startTime);
-                breath.stop(startTime + whistleLength);
-
-                const createWhistleBlast = (offset, duration, baseFrequency, pan) => {
-                    const oscillator = ctx.createOscillator();
-                    const overtone = ctx.createOscillator();
-                    const blastGain = ctx.createGain();
-                    const blastPan = ctx.createStereoPanner();
-                    const blastStart = startTime + offset;
-                    const blastEnd = blastStart + duration;
-
-                    oscillator.type = 'sine';
-                    oscillator.frequency.setValueAtTime(baseFrequency, blastStart);
-                    oscillator.frequency.exponentialRampToValueAtTime(baseFrequency * 1.14, blastEnd - 0.08);
-                    overtone.type = 'triangle';
-                    overtone.frequency.setValueAtTime(baseFrequency * 2.01, blastStart);
-                    overtone.frequency.exponentialRampToValueAtTime(baseFrequency * 2.18, blastEnd - 0.08);
-                    blastGain.gain.setValueAtTime(0.0001, blastStart);
-                    blastGain.gain.exponentialRampToValueAtTime(0.46, blastStart + 0.025);
-                    blastGain.gain.setValueAtTime(0.46, blastEnd - 0.1);
-                    blastGain.gain.exponentialRampToValueAtTime(0.0001, blastEnd);
-                    blastPan.pan.setValueAtTime(pan, blastStart);
-                    oscillator.connect(blastGain);
-                    overtone.connect(blastGain);
-                    blastGain.connect(blastPan);
-                    blastPan.connect(masterGain);
-                    oscillator.start(blastStart);
-                    overtone.start(blastStart);
-                    oscillator.stop(blastEnd);
-                    overtone.stop(blastEnd);
-                };
-
-                createWhistleBlast(0, 0.34, 2100 + Math.random() * 100, -0.35);
-                createWhistleBlast(0.43, 0.42, 2350 + Math.random() * 130, 0.35);
-                setTimeout(() => ctx.close(), 1200);
-            } catch (e) {
-                console.log("Web Audio Whistle synthesis failed:", e);
-            }
-        }
-
-        /**
          * Generates dynamic confetti particle animation
          */
         function launchConfetti() {
@@ -349,7 +262,6 @@
 
             overlay.classList.add('active');
 
-            playWhistleSound();
             launchConfetti();
 
             setTimeout(() => {
